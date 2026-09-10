@@ -13,7 +13,7 @@
 | ![首页](docs/screenshot-home.png) | ![搜索](docs/screenshot-search.png) |
 
 > 界面以简体中文为主（gettext，含 zh_TW），软件名支持中文映射表。
-> 当前版本 **v0.1.0**：只读查询、事务计划与提权执行全部跑通；**294 个测试全绿**。
+> 当前版本 **v0.1.0**：只读查询、事务计划与提权执行全部跑通；**295 个测试全绿**。
 
 ## 特性
 
@@ -166,7 +166,7 @@ AppStream metainfo、polkit policy、gschema、zh_CN / zh_TW 翻译与软件名�
 make check    # fmt --check + clippy -D warnings + 全部测试 + 依赖方向约束 + msgfmt --check
 ~~~
 
-当前状态：**294 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 52 + helper 33）。
+当前状态：**295 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 53 + helper 33）。
 
 | 层级 | 内容 |
 | --- | --- |
@@ -362,6 +362,25 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
   "请从左侧选择一个分类"，**绝不残留上一个来源的列表**。切到"首页"同样会重新拉取
   Flathub 趋势（6 小时缓存命中时几乎瞬时）。`smoke.rs` 覆盖"各来源各自记住分类"
   与"新来源必须返回 None 而不是沿用上一个分类"。
+- **点底栏的删除按钮必崩**（用户实测反馈）：`AppState::reset()» 写成
+  `if let Ok(next) = self.tx.borrow().clone().apply(..) { *self.tx.borrow_mut() = next; }»，
+  临时 `Ref» 会活到整个 `if let» 语句结束（**包括分支体**），分支体里的 `borrow_mut()»
+  直接 panic `RefCell already borrowed»；panic hook 捕获后又在 GTK 回调里二次 panic
+  （"panic in a function that cannot unwind"），整个应用退出。
+  实测日志：`state.rs:232 RefCell already borrowed»。现在先克隆再回写，
+  并加了"连续 reset 两次不 panic"的回归测试。
+- **Flatpak 安装成功却弹"内部错误：在状态 Running … 下不能确认"**（用户实测反馈）：
+  计划栏的三个按钮被接了两遍（构造时的回调 + `wire_plan_bar»），一次点击会跑两次
+  `execute_plan» —— 第二次在 Running 上做 `Confirm»，于是弹错，而安装其实已经开始、
+  最终会成功。现在删掉重复接线，并在 `execute_plan» 开头加了"事务进行中直接返回"的幂等保护。
+- **侧栏 / 底栏 / 顶部消息栏不能收起**（用户实测反馈）：头部新增两个开关按钮
+  （`sidebar-show-symbolic» 切 `AdwNavigationSplitView:show-sidebar»、
+  `go-bottom-symbolic» 切底栏可见性）；两条横幅（崩溃恢复、计划风险）都加了
+  "知道了"按钮可以点掉。出现新计划时底栏会自动展开，避免用户看不到待确认的计划。
+- **软件改完页面不及时刷新**（用户实测反馈）：事务成功后只重开 alpm 句柄、刷新
+  "已安装/可更新"，其它页面与详情页仍是旧状态。现在还会重读 Flatpak 的已安装索引，
+  并刷新**当前可见页面**（首页 / 分类 / 可更新 / 搜索）以及**打开着的详情页**
+  （按钮会从"安装"变成"已安装"）。
 - **详情页没有返回键**：`AdwNavigationView` 只会往"页面里的 `AdwHeaderBar`"注入返回键，
   而详情页根控件原本是裸的 `GtkBox`。已包成 `AdwToolbarView + AdwHeaderBar`，
   并补了 `Esc`（先返回列表）与 `Alt+Left` 快捷键。回归测试用递归查找确认
@@ -402,7 +421,7 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
 **已验证（本机实测）**
 
 - `cargo build --release --workspace`、`cargo clippy -- -D warnings`、`cargo fmt --check`、
-  **294 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 52 + helper 33）
+  **295 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 53 + helper 33）
 - `--doctor` 输出与设计文档基线逐项一致（local 972 包 / explicit 185 / core 297 / extra 14955），
   并新增图标来源一项：`[ OK ] 软件图标：AppStream 覆盖 1260 个仓库包；46 个已安装包另有 .desktop 图标（含 AUR 软件）`
 - **图标修复的端到端验证**（Xvfb 下运行 release 二进制 + XTEST 注入真实键入）：
@@ -413,6 +432,9 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
 - 只读后端打通真实数据：AUR 搜索+详情+依赖、Flathub 元数据+分类分页（第 1/2/3 页内容不重复）、
   Flatpak 本地列表、Arch 安全公告（2444 条，首次 2.5 s、缓存命中 25 ms）
 - helper 拒绝全部注入尝试（路径穿越、命令注入、白名单外路径、0644 权限、未知 schema、kind 不匹配）
+- **界面回归（Xvfb + XTEST 真实点击）**：侧栏开关点击后侧栏区域变化 17530 像素、
+  底栏开关点击后底栏区域变化 4017 像素（收起生效）；底栏"删除"按钮点击后进程存活、
+  \`last-crash.txt\` 未被更新、计划栏清空（125234 像素变化）—— 修复前这一下必崩。
 - `make install DESTDIR=… PREFIX=/usr` 产物通过 `desktop-file-validate`、
   `appstreamcli validate`、`glib-compile-schemas --strict`，polkit 的 `exec.path`
   与实际安装路径一致

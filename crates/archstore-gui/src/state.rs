@@ -14,8 +14,8 @@ use archstore_core::config::Config;
 use archstore_core::error::{CoreError, CoreResult};
 use archstore_core::flathub::{Advisory, FlathubClient};
 use archstore_core::i18n::SoftwareNames;
-use archstore_core::model::PackageId;
 use archstore_core::model::plan::{PlanKind, TransactionPlan};
+use archstore_core::model::{PackageId, PackageSummary};
 use archstore_core::net::HttpClient;
 use archstore_core::plan::AurRequest;
 use archstore_core::plan::InstallOptions;
@@ -173,6 +173,8 @@ pub struct AppState {
     pub aur: std::cell::RefCell<Vec<AurRequest>>,
     /// 依赖弹窗里用户的选择（包 -> 选择），构建安装计划时带上
     pub dep_selection: std::cell::RefCell<Option<(PackageId, DepSelection)>>,
+    /// 详情页当前展示的软件：事务结束后用它重新拉取详情，让按钮状态（安装/已安装）跟着变
+    pub current_detail: std::cell::RefCell<Option<PackageSummary>>,
 }
 
 impl std::fmt::Debug for AppState {
@@ -194,6 +196,7 @@ impl AppState {
             draft: std::cell::RefCell::new(Vec::new()),
             aur: std::cell::RefCell::new(Vec::new()),
             dep_selection: std::cell::RefCell::new(None),
+            current_detail: std::cell::RefCell::new(None),
         }
     }
 
@@ -223,12 +226,18 @@ impl AppState {
         self.draft.borrow().is_empty() && !self.aur.borrow().is_empty()
     }
 
-    /// 清空队列。
+    /// 清空队列（计划栏的"放弃/删除"按钮走这里）。
     pub fn reset(&self) {
         *self.draft.borrow_mut() = Vec::new();
         *self.aur.borrow_mut() = Vec::new();
         *self.dep_selection.borrow_mut() = None;
-        if let Ok(next) = self.tx.borrow().clone().apply(TxEvent::Reset) {
+        // 先克隆、再回写：不能在同一个表达式里同时持有 borrow() 与 borrow_mut()。
+        // 旧实现写成 `if let Ok(next) = self.tx.borrow().clone().apply(..)`，
+        // 临时 Ref 会活到整个 if let 语句结束（含分支体），
+        // 于是分支体里的 borrow_mut() 抛 "RefCell already borrowed" 并 panic ——
+        // 用户点底栏的删除按钮就会崩（实测日志：state.rs:232）。
+        let current = self.tx.borrow().clone();
+        if let Ok(next) = current.apply(TxEvent::Reset) {
             *self.tx.borrow_mut() = next;
         }
     }
@@ -896,6 +905,34 @@ mod tests {
             .expect("succeed");
         assert!(matches!(s, TxState::Succeeded { .. }));
         assert!(s.accepts_new_plan());
+    }
+
+    /// 回归：底栏的"删除/放弃"按钮调用 `AppState::reset()»。
+    ///
+    /// 旧实现是 `if let Ok(next) = self.tx.borrow().clone().apply(..) { *self.tx.borrow_mut() = next; }» ——
+    /// 临时 `Ref» 活到整个 if let 语句结束（含分支体），分支体里的 `borrow_mut()» 直接 panic：
+    /// "RefCell already borrowed"，用户点一下删除按钮整个应用就崩（实测日志 state.rs:232）。
+    #[test]
+    fn app_state_reset_does_not_panic() {
+        let state = AppState::new();
+        *state.tx.borrow_mut() = TxState::Idle
+            .apply(TxEvent::Enqueue(plan()))
+            .expect("enqueue")
+            .apply(TxEvent::Confirm)
+            .expect("confirm")
+            .apply(TxEvent::Authorize)
+            .expect("authorize")
+            .apply(TxEvent::Start)
+            .expect("start");
+        assert!(state.tx.borrow().is_running());
+
+        state.reset();
+        assert!(matches!(*state.tx.borrow(), TxState::Idle));
+        // 再点一次也不能出问题（幂等）
+        state.reset();
+        assert!(matches!(*state.tx.borrow(), TxState::Idle));
+        assert!(state.plans().is_empty());
+        assert!(state.aur_requests().is_empty());
     }
 
     #[test]

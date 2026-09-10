@@ -30,7 +30,7 @@ use crate::pages::search::SearchPage;
 use crate::pages::settings::{SettingsCallbacks, SettingsPage};
 use crate::pages::updates::UpdatesPage;
 use crate::runtime;
-use crate::state::{AppState, Services, TxEvent};
+use crate::state::{AppState, Services, TxEvent, TxState};
 use crate::ui;
 use crate::widgets::RowContext;
 use crate::widgets::plan_bar::{self, PlanBar, PlanBarCallbacks};
@@ -110,6 +110,12 @@ pub struct MainWindow {
     pub banner: adw::Banner,
     /// 侧栏"可更新"右侧的计数
     pub updates_count: gtk::Label,
+    /// 侧栏页面（收起侧栏时把它从 split 上摘下来，展开时再装回去）
+    pub sidebar_page: adw::NavigationPage,
+    /// 侧栏显示开关（头部按钮）
+    pub sidebar_toggle: gtk::ToggleButton,
+    /// 底栏（计划栏 + 进度面板）显示开关（头部按钮）
+    pub bottom_toggle: gtk::ToggleButton,
     pub current_nav: RefCell<Nav>,
     /// 详情页的导航页（push 到内层 NavigationView 上，返回由它负责）
     pub detail_nav: adw::NavigationPage,
@@ -209,6 +215,7 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
     let detail = Rc::new(DetailPage::new());
     let detail_nav = adw::NavigationPage::builder()
         .title(ui::t("详情"))
+        .tag("detail")
         .child(&detail.root)
         .build();
 
@@ -320,6 +327,7 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
                     m.state.reset();
                     refresh_plan_bar(&m);
                     m.progress.reset();
+                    m.plan_bar.hide_banner();
                 }
             })
         },
@@ -362,6 +370,21 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
     refresh.set_tooltip_text(Some(&ui::t("刷新（F5）")));
     refresh.add_css_class("flat");
     header.pack_start(&refresh);
+    // 侧栏 / 底栏都可以收起（用户实测反馈：这三个区域理应能收起来）
+    let sidebar_toggle = gtk::ToggleButton::new();
+    sidebar_toggle.set_child(Some(&gtk::Image::from_icon_name("sidebar-show-symbolic")));
+    sidebar_toggle.set_active(true);
+    sidebar_toggle.set_tooltip_text(Some(&ui::t("显示 / 隐藏侧栏")));
+    sidebar_toggle.add_css_class("flat");
+    header.pack_start(&sidebar_toggle);
+
+    let bottom_toggle = gtk::ToggleButton::new();
+    bottom_toggle.set_child(Some(&gtk::Image::from_icon_name("go-bottom-symbolic")));
+    bottom_toggle.set_active(true);
+    bottom_toggle.set_tooltip_text(Some(&ui::t("显示 / 隐藏底栏（计划与进度）")));
+    bottom_toggle.add_css_class("flat");
+    header.pack_start(&bottom_toggle);
+
     let updates_button = gtk::Button::with_label(&ui::t("更新"));
     updates_button.add_css_class("flat");
     header.pack_end(&updates_button);
@@ -373,8 +396,11 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
     toolbar.set_content(Some(&split));
     toolbar.add_bottom_bar(&bottom);
 
+    // 顶部消息栏：给一个"知道了"按钮，点掉就收起（用户实测反馈：理应可以收起）
     let banner = adw::Banner::new("");
     banner.set_revealed(false);
+    banner.set_button_label(Some(&ui::t("知道了")));
+    banner.connect_button_clicked(|b| b.set_revealed(false));
     toolbar.add_top_bar(&banner);
 
     let toast = adw::ToastOverlay::new();
@@ -402,6 +428,7 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
         window: window.clone(),
         toast: toast.clone(),
         split,
+        sidebar_page: sidebar_page.clone(),
         stack,
         sidebar: sidebar.clone(),
         state,
@@ -420,10 +447,32 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
         updates_button: updates_button.clone(),
         banner,
         updates_count: count.clone(),
+        sidebar_toggle: sidebar_toggle.clone(),
+        bottom_toggle: bottom_toggle.clone(),
         current_nav: RefCell::new(Nav::Home),
         detail_nav: detail_nav.clone(),
         nav_view: nav_view.clone(),
     });
+
+    // 侧栏 / 底栏的收起与展开（控件句柄在弱引用槽生效前后都已存在）
+    {
+        let split = main.split.clone();
+        let sidebar_page = main.sidebar_page.clone();
+        // AdwNavigationSplitView 没有 show-sidebar 属性；
+        // show-content 只在折叠（窄窗口）模式下有意义，宽窗口下摘掉 sidebar 才对：
+        // 收起时 set_sidebar(None)，展开时装回同一个页面（控件本身不销毁）。
+        sidebar_toggle.connect_toggled(move |b| {
+            if b.is_active() {
+                split.set_sidebar(Some(&sidebar_page));
+            } else {
+                split.set_sidebar(None::<&adw::NavigationPage>);
+            }
+        });
+    }
+    {
+        let bottom = bottom.clone();
+        bottom_toggle.connect_toggled(move |b| bottom.set_visible(b.is_active()));
+    }
 
     // 页面回调从现在起可以拿到窗口
     *weak.borrow_mut() = Some(Rc::downgrade(&main));
@@ -431,7 +480,6 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
     // ---------- 事件接线 ----------
     wire_navigation(&main);
     wire_header(&main, &refresh, &updates_button, &settings_button);
-    wire_plan_bar(&main);
     wire_search(&main);
     wire_settings(&main);
     wire_category(&main);
@@ -738,9 +786,17 @@ fn open_detail_lazy(slot: &WeakSlot, summary: PackageSummary) {
 
 /// 打开详情页：先把本地摘要显示出来，再异步补全网络字段（§7.4）。
 pub fn open_detail(main: &Rc<MainWindow>, summary: PackageSummary) {
+    *main.state.current_detail.borrow_mut() = Some(summary.clone());
     main.detail.show_summary(&summary);
     main.nav_view.push(&main.detail_nav);
+    reload_detail(main, summary);
+}
 
+/// 重新拉取某个软件的详情并渲染到详情页（不 push）。
+///
+/// 事务结束后会复用它：安装/卸载完成后，详情页的按钮与状态必须跟着变，
+/// 而不是停留在"安装"（用户实测反馈：软件改了页面不及时刷新）。
+fn reload_detail(main: &Rc<MainWindow>, summary: PackageSummary) {
     let Some(services) = main.services.borrow().clone() else {
         // 服务尚未就绪：只显示摘要，不报错
         return;
@@ -869,6 +925,12 @@ fn refresh_plan_bar(main: &Rc<MainWindow>) {
     let plans = main.state.plans();
     let aur = main.state.aur_requests();
     main.plan_bar.update(&state, &plans, &aur);
+    // 有待确认的计划 / 事务状态变化时自动展开底栏：
+    // 用户手动收起了底栏，但新计划必须让他看见。
+    let needs_attention = !plans.is_empty() || !aur.is_empty() || !matches!(state, TxState::Idle);
+    if needs_attention {
+        main.bottom_toggle.set_active(true);
+    }
 }
 
 /// 把构建结果入队并刷新界面。
@@ -1332,41 +1394,6 @@ fn wire_header(
     }
 }
 
-fn wire_plan_bar(main: &Rc<MainWindow>) {
-    {
-        let main = main.clone();
-        main.plan_bar
-            .details_button()
-            .clone()
-            .connect_clicked(move |_| {
-                if let Some(plan) = main.state.tx.borrow().plan() {
-                    plan_bar::show_plan_details(&main.window, std::slice::from_ref(&*plan), &[]);
-                }
-            });
-    }
-    {
-        let main = main.clone();
-        main.plan_bar
-            .discard_button()
-            .clone()
-            .connect_clicked(move |_| {
-                main.state.reset();
-                refresh_plan_bar(&main);
-                main.plan_bar.hide_banner();
-                main.progress.reset();
-            });
-    }
-    {
-        let main = main.clone();
-        main.plan_bar
-            .execute_button()
-            .clone()
-            .connect_clicked(move |_| {
-                execute_plan(&main);
-            });
-    }
-}
-
 /// 执行当前计划。
 ///
 /// 两条路径：
@@ -1377,6 +1404,13 @@ fn execute_plan(main: &Rc<MainWindow>) {
     let Some(services) = main.services.borrow().clone() else {
         return;
     };
+    // 幂等保护：事务进行中直接忽略重复触发。
+    // 旧实现把计划栏按钮接了两遍，一次点击会跑两次 execute_plan：
+    // 第二次在 Running 上做 Confirm，于是弹出
+    // "内部错误：在状态 Running {…} 下不能确认" —— 但安装其实已经开始、最终成功。
+    if main.state.tx.borrow().is_running() {
+        return;
+    }
     let aur_requests = main.state.aur_requests();
 
     // 只有 AUR 请求：不经过 helper，直接交给终端
@@ -1640,13 +1674,51 @@ fn refresh_after_transaction(main: &Rc<MainWindow>) {
             if let Some(p) = services.pacman.as_ref() {
                 let _ = p.refresh().await;
             }
+            // Flatpak 后端的"已安装"是内存索引：不重读的话，
+            // 列表里的"已安装/可安装"药丸仍然是事务前的状态
+            if let Some(f) = services.flatpak.as_ref() {
+                let _ = f.list_installed().await;
+            }
             Ok::<_, archstore_core::CoreError>(())
         },
         move |_| {
             load_installed(&main_ref);
             load_updates(&main_ref);
+            refresh_visible_after_transaction(&main_ref);
         },
     );
+}
+
+/// 事务结束后把"用户当前正看着的东西"刷新一遍（用户实测反馈：软件改了页面不及时刷新）。
+fn refresh_visible_after_transaction(main: &Rc<MainWindow>) {
+    // 1) 详情页开着：重新拉详情，让按钮从"安装"变成"已安装"（或反过来）
+    let detail_open = main
+        .nav_view
+        .visible_page()
+        .map(|p| p.tag().as_deref() == Some("detail"))
+        .unwrap_or(false);
+    if detail_open && let Some(summary) = main.state.current_detail.borrow().clone() {
+        reload_detail(main, summary);
+    }
+
+    // 2) 当前列表页：重跑这一页自己的数据加载（都是本地读或命中缓存）
+    match *main.current_nav.borrow() {
+        Nav::Home => load_home(main),
+        Nav::Category | Nav::Aur | Nav::Flatpak => load_categories(main),
+        Nav::Updates => load_updates(main),
+        // 已安装 / 可更新在上面已经刷过；设置页没有列表数据
+        Nav::Installed | Nav::Settings => {}
+    }
+
+    // 3) 搜索页可见且有关键字：重跑一次（run_search 会切到搜索页，所以只在已可见时调用）
+    let search_visible = main
+        .stack
+        .visible_child_name()
+        .map(|n| n == "search")
+        .unwrap_or(false);
+    if search_visible && !main.search.last_query().trim().is_empty() {
+        run_search(main);
+    }
 }
 
 /// 搜索触发：回车 / 输入防抖 / 来源开关，三条路径共用同一条 run_search。

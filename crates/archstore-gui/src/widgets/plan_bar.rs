@@ -85,6 +85,9 @@ impl PlanBar {
 
         let banner = adw::Banner::new("");
         banner.set_revealed(false);
+        // 风险提示横幅可以点掉（"知道了"）
+        banner.set_button_label(Some(&ui::t("知道了")));
+        banner.connect_button_clicked(|b| b.set_revealed(false));
 
         let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
         holder.append(&banner);
