@@ -897,6 +897,64 @@ line2",
     assert_eq!(category.category_count(), 1);
     category.set_source_filter(None);
     assert_eq!(category.category_count(), 3, "取消过滤后恢复全部");
+
+    // ---------- 发现：三个来源各自记住自己的分类，切换时重新拉取 ----------
+    {
+        use archstore_core::backend::Category;
+        let p = CategoryPage::new(&ctx, |_| {}, Box::new(|| {}), Box::new(|| {}));
+        p.connect_select(|_, _| {});
+        p.set_categories(&[
+            Category::new("extra:gnome", "gnome（12）", "pacman"),
+            Category::new("keyword:browser", "浏览器", "aur"),
+            Category::new("flathub:Game", "游戏", "flatpak"),
+        ]);
+        let pick = |index: i32| {
+            let row = p.list_widget().row_at_index(index).expect("分类行");
+            p.list_widget().emit_by_name::<()>("row-activated", &[&row]);
+        };
+
+        // "分类"里选 gnome
+        assert_eq!(p.active_source(), "category");
+        pick(0);
+        assert_eq!(
+            p.current_category().map(|c| c.id),
+            Some("extra:gnome".to_string())
+        );
+
+        // 切到"AUR 社区"：这个来源还没选过分类 -> 返回 None（调用方显示提示态）
+        assert!(
+            p.switch_source("aur", Some("aur")).is_none(),
+            "没选过分类的来源必须返回 None，而不是沿用上一个来源的分类"
+        );
+        assert_eq!(p.active_source(), "aur");
+        assert_eq!(p.category_count(), 1, "侧栏只显示 AUR 关键词分类");
+        p.show_pick_hint();
+        assert_eq!(p.page.shell.state_name(), "empty");
+        assert_eq!(
+            p.page.store.n_items(),
+            0,
+            "切换来源后内容区不得残留上一个来源的软件列表"
+        );
+        pick(0); // AUR 里选"浏览器"
+        assert_eq!(
+            p.current_category().map(|c| c.id),
+            Some("keyword:browser".to_string())
+        );
+
+        // 切回"分类"：恢复 gnome（调用方会用它重新拉首屏）
+        let restored = p.switch_source("category", None).expect("恢复分类");
+        assert_eq!(restored.id, "extra:gnome");
+        assert_eq!(p.category_count(), 3);
+        // 再切回"AUR 社区"：恢复"浏览器"
+        let restored = p.switch_source("aur", Some("aur")).expect("恢复 AUR 分类");
+        assert_eq!(restored.id, "keyword:browser");
+
+        // 全新来源 -> None + 提示态
+        assert!(p.switch_source("flatpak", Some("flatpak")).is_none());
+        p.show_pick_hint();
+        assert_eq!(p.page.shell.state_name(), "empty");
+        assert_eq!(p.page.store.n_items(), 0);
+    }
     // 模拟点击分类行：必须触发 connect_select 注册的回调
     let row = category
         .list_widget()

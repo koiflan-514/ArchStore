@@ -1,6 +1,7 @@
 //! 分类页（§7.3）：pacman 包组 + AUR 关键词 + Flatpak 分类，分页 spinner 在列表尾部。
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk::prelude::*;
@@ -34,6 +35,11 @@ pub struct CategoryPage {
     current: Rc<RefCell<Option<Category>>>,
     offset: Rc<RefCell<usize>>,
     on_select: Rc<RefCell<Option<CategorySelectCallback>>>,
+    /// 三个"发现"导航项（分类 / AUR 社区 / Flatpak）共用同一套控件，
+    /// 但**各自的当前分类独立保存**：切走再切回来时能看到自己上次选的那一类。
+    sessions: Rc<RefCell<HashMap<&'static str, Category>>>,
+    /// 当前活动的来源键（"category" / "aur" / "flatpak"）
+    active: Rc<RefCell<&'static str>>,
 }
 
 /// 分类选择回调：category + 分页参数。
@@ -82,6 +88,8 @@ impl CategoryPage {
             current: Rc::new(RefCell::new(None)),
             offset: Rc::new(RefCell::new(0)),
             on_select: Rc::new(RefCell::new(None)),
+            sessions: Rc::new(RefCell::new(HashMap::new())),
+            active: Rc::new(RefCell::new("category")),
         };
         this.set_footer_visible(false);
         this
@@ -131,6 +139,69 @@ impl CategoryPage {
         self.render();
     }
 
+    /// 切换"发现"里的来源导航，返回**该来源上次选中的分类**（没有则为 None）。
+    ///
+    /// 行为：
+    /// 1. 把当前分类存进旧来源的会话；
+    /// 2. 切换侧栏分类列表的来源过滤；
+    /// 3. 恢复新来源上次选中的分类（并把侧栏对应行重新选中）。
+    ///
+    /// 调用方拿到返回值后要**重新拉取该分类的首屏**——用户实测反馈"来回切换要更新"，
+    /// 所以切页不是简单把旧数据摆回去，而是重新请求（本地库毫秒级、AUR/Flathub 有缓存）。
+    pub fn switch_source(
+        &self,
+        key: &'static str,
+        filter: Option<&'static str>,
+    ) -> Option<Category> {
+        {
+            let previous = *self.active.borrow();
+            let mut sessions = self.sessions.borrow_mut();
+            match self.current.borrow().clone() {
+                Some(cat) => {
+                    sessions.insert(previous, cat);
+                }
+                None => {
+                    sessions.remove(previous);
+                }
+            }
+        }
+        *self.active.borrow_mut() = key;
+        *self.source_filter.borrow_mut() = filter;
+        // 先恢复新来源的选择再渲染：render() 会把对应行重新选中
+        let restored = self.sessions.borrow().get(key).cloned();
+        *self.current.borrow_mut() = restored.clone();
+        *self.offset.borrow_mut() = 0;
+        self.render();
+        restored
+    }
+
+    /// 当前来源键（测试用）。
+    pub fn active_source(&self) -> &'static str {
+        *self.active.borrow()
+    }
+
+    /// 当前选中的分类。
+    pub fn current_category(&self) -> Option<Category> {
+        self.current.borrow().clone()
+    }
+
+    /// 没有选中分类时的提示态。
+    ///
+    /// 切换来源后如果这个来源还没选过分类，内容区必须**清空**并给出提示，
+    /// 而不是继续显示上一个来源的软件列表。
+    pub fn show_pick_hint(&self) {
+        self.page.progress.set_visible(false);
+        self.set_footer_visible(false);
+        self.page.set_items(
+            &[],
+            EmptyState::new(
+                "view-list-symbolic",
+                ui::t("请从左侧选择一个分类"),
+                ui::t("左侧列出的是当前来源的分类；点一个分类即可查看其中的软件。"),
+            ),
+        );
+    }
+
     /// 当前来源过滤。
     pub fn source_filter(&self) -> Option<&'static str> {
         *self.source_filter.borrow()
@@ -163,6 +234,16 @@ impl CategoryPage {
             self.list.append(&row);
         }
         *self.categories.borrow_mut() = visible;
+
+        // 重新渲染后保持"当前分类"的选中态：
+        // 刷新分类列表（load_categories）会重建所有行，不重新选中就会丢掉高亮，
+        // 用户会以为"切回来之后什么都没选中"。
+        if let Some(cat) = self.current.borrow().clone()
+            && let Some(index) = self.categories.borrow().iter().position(|c| c.id == cat.id)
+            && let Some(row) = self.list.row_at_index(index as i32)
+        {
+            self.list.select_row(Some(&row));
+        }
     }
 
     /// 追加分页结果。

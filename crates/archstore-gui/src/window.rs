@@ -15,7 +15,7 @@ use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
 
-use archstore_core::backend::{PackageBackend, SearchScope};
+use archstore_core::backend::{Category, PackageBackend, Page, SearchScope};
 use archstore_core::config::Config;
 use archstore_core::model::plan::PlanKind;
 use archstore_core::model::{PackageId, PackageSummary};
@@ -1249,22 +1249,46 @@ fn wire_navigation(main: &Rc<MainWindow>) {
         // 否则用户从详情页点侧栏会"点了没反应"（详情页还压在导航栈上）。
         main_ref.nav_view.pop_to_tag("root");
 
-        // "AUR 社区"/"Flatpak" 复用分类页，只切换来源过滤
-        let (page_name, filter) = match nav {
-            Nav::Aur => ("category", Some("aur")),
-            Nav::Flatpak => ("category", Some("flatpak")),
-            Nav::Category => ("category", None),
-            other => (other.page_name(), None),
+        // "分类 / AUR 社区 / Flatpak" 三个导航项共用一套控件，但各自保存
+        // "当前选中的分类"；切换时重新拉取该来源的首屏（用户实测："来回切换要更新"）。
+        // （GTK 中一个控件只能有一个父容器，不能把同一页面反复 add 到 ViewStack。）
+        let page_name = match nav {
+            Nav::Aur | Nav::Flatpak | Nav::Category => "category",
+            other => other.page_name(),
         };
-        if matches!(nav, Nav::Category | Nav::Aur | Nav::Flatpak) {
-            main_ref.category.set_source_filter(filter);
+        match nav {
+            Nav::Category | Nav::Aur | Nav::Flatpak => {
+                let (key, filter) = match nav {
+                    Nav::Aur => ("aur", Some("aur")),
+                    Nav::Flatpak => ("flatpak", Some("flatpak")),
+                    _ => ("category", None),
+                };
+                match main_ref.category.switch_source(key, filter) {
+                    // 这个来源上次选过分类：重新拉首屏
+                    Some(cat) => load_category_page(
+                        &main_ref,
+                        &cat,
+                        Page::new(0, crate::pages::category::PAGE_SIZE),
+                        false,
+                    ),
+                    // 没选过：清空内容区并提示（不能留着上一个来源的列表）
+                    None => main_ref.category.show_pick_hint(),
+                }
+                // 分类列表本身也刷新一次（本地库 + 缓存，代价很小）
+                load_categories(&main_ref);
+            }
+            Nav::Home => {
+                // 首页重新拉取 Flathub 趋势（命中 6 小时缓存时几乎瞬时）
+                load_home(&main_ref);
+            }
+            Nav::Updates => {
+                // 安全公告只在更新页可见时拉取一次（缓存 6 小时）
+                load_updates(&main_ref);
+            }
+            _ => {}
         }
         main_ref.stack.set_visible_child_name(page_name);
         *main_ref.current_nav.borrow_mut() = nav;
-        if nav == Nav::Updates {
-            // 安全公告只在更新页可见时拉取一次（缓存 6 小时）
-            load_updates(&main_ref);
-        }
     });
     // 默认选中首页
     if let Some(row) = main.sidebar.row_at_index(0) {
@@ -1792,46 +1816,64 @@ pub fn run_search(main: &Rc<MainWindow>) {
 }
 
 /// 分类选择：加载某个分类的第一页。
+/// 按分类的来源种类取对应后端。
+fn backend_for(services: &Services, source_kind: &str) -> Option<Arc<dyn PackageBackend>> {
+    match source_kind {
+        "aur" => services.aur.clone().map(|b| b as Arc<dyn PackageBackend>),
+        "flatpak" => services
+            .flatpak
+            .clone()
+            .map(|b| b as Arc<dyn PackageBackend>),
+        _ => services
+            .pacman
+            .clone()
+            .map(|b| b as Arc<dyn PackageBackend>),
+    }
+}
+
+/// 拉取某个分类的一页：`append = false` 替换首屏，`true` 追加到尾部。
+///
+/// "分类 / AUR 社区 / Flatpak"三个导航项共用这一条路径：切换来源时也会用它
+/// 重新拉首屏，所以"来回切换"看到的一定是刚取回的数据，而不是上一个来源的残留。
+fn load_category_page(main: &Rc<MainWindow>, cat: &Category, page: Page, append: bool) {
+    let Some(services) = main.services.borrow().clone() else {
+        return;
+    };
+    if append {
+        main.category.spinner().start();
+    } else {
+        main.category.show_loading();
+    }
+    let main_inner = main.clone();
+    let cat = cat.clone();
+    runtime::spawn_ui(
+        async move {
+            let Some(backend) = backend_for(&services, cat.source_kind) else {
+                return Err(archstore_core::CoreError::BackendUnavailable {
+                    kind: cat.source_kind.to_string(),
+                    reason: "该后端未启用".into(),
+                });
+            };
+            backend.list_category(&cat.id, page).await
+        },
+        move |result| match result {
+            Ok(items) => {
+                let has_more = items.len() >= crate::pages::category::PAGE_SIZE;
+                if append {
+                    main_inner.category.append_page(&items, has_more);
+                } else {
+                    main_inner.category.set_items(&items, has_more);
+                }
+            }
+            Err(e) => main_inner.category.show_error(&e),
+        },
+    );
+}
+
 fn wire_category(main: &Rc<MainWindow>) {
     let main_ref = main.clone();
     main.category.connect_select(move |cat, page| {
-        let Some(services) = main_ref.services.borrow().clone() else {
-            return;
-        };
-        main_ref.category.show_loading();
-        let main_inner = main_ref.clone();
-        runtime::spawn_ui(
-            async move {
-                let backend = match cat.source_kind {
-                    "aur" => services
-                        .aur
-                        .clone()
-                        .map(|b| b as std::sync::Arc<dyn PackageBackend>),
-                    "flatpak" => services
-                        .flatpak
-                        .clone()
-                        .map(|b| b as std::sync::Arc<dyn PackageBackend>),
-                    _ => services
-                        .pacman
-                        .clone()
-                        .map(|b| b as std::sync::Arc<dyn PackageBackend>),
-                };
-                let Some(backend) = backend else {
-                    return Err(archstore_core::CoreError::BackendUnavailable {
-                        kind: cat.source_kind.to_string(),
-                        reason: "该后端未启用".into(),
-                    });
-                };
-                backend.list_category(&cat.id, page).await
-            },
-            move |result| match result {
-                Ok(items) => {
-                    let has_more = items.len() >= crate::pages::category::PAGE_SIZE;
-                    main_inner.category.set_items(&items, has_more);
-                }
-                Err(e) => main_inner.category.show_error(&e),
-            },
-        );
+        load_category_page(&main_ref, &cat, page, false);
     });
 
     let main_ref = main.clone();
@@ -1842,40 +1884,7 @@ fn wire_category(main: &Rc<MainWindow>) {
             let Some((cat, page)) = main_ref.category.next_page() else {
                 return;
             };
-            let Some(services) = main_ref.services.borrow().clone() else {
-                return;
-            };
-            main_ref.category.spinner().start();
-            let main_inner = main_ref.clone();
-            runtime::spawn_ui(
-                async move {
-                    let backend = match cat.source_kind {
-                        "aur" => services
-                            .aur
-                            .clone()
-                            .map(|b| b as std::sync::Arc<dyn PackageBackend>),
-                        "flatpak" => services
-                            .flatpak
-                            .clone()
-                            .map(|b| b as std::sync::Arc<dyn PackageBackend>),
-                        _ => services
-                            .pacman
-                            .clone()
-                            .map(|b| b as std::sync::Arc<dyn PackageBackend>),
-                    };
-                    match backend {
-                        Some(b) => b.list_category(&cat.id, page).await,
-                        None => Ok(Vec::new()),
-                    }
-                },
-                move |result| match result {
-                    Ok(items) => {
-                        let has_more = items.len() >= crate::pages::category::PAGE_SIZE;
-                        main_inner.category.append_page(&items, has_more);
-                    }
-                    Err(e) => main_inner.category.show_error(&e),
-                },
-            );
+            load_category_page(&main_ref, &cat, page, true);
         });
 }
 
