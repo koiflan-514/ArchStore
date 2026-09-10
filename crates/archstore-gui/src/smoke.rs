@@ -149,6 +149,21 @@ fn solid_texture() -> gtk::gdk::Texture {
 /// 测试用：捕获远程图标加载器的完成回调，稍后手动触发。
 type CapturedCallbacks = Rc<std::cell::RefCell<Vec<Box<dyn FnOnce(Option<std::path::PathBuf>)>>>>;
 
+/// 跑一小会儿主循环。
+///
+/// `GtkSearchEntry::search-changed` 是异步发出的（即使 search-delay 为 0 也要等一次
+/// 主循环迭代），测试里必须给它机会，否则会误判成"输入没有生效"。
+fn pump_main_loop(ms: u64) {
+    let ctx = glib::MainContext::default();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+    while std::time::Instant::now() < deadline {
+        while ctx.pending() {
+            ctx.iteration(false);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 /// 取出远程图标占位控件里的 Image 槽位（placeholder = Box[字母头像, Image]）。
 fn slot_image(widget: &gtk::Widget) -> Option<gtk::Image> {
     let holder = widget.clone().downcast::<gtk::Box>().ok()?;
@@ -423,7 +438,6 @@ fn ui_smoke_builds_every_page_and_widget() {
             |_| {},
             Box::new(|| {}),
             Box::new(|| {}),
-            Box::new(|_| {}),
         );
         let shell_widget: gtk::Widget = sp.page.shell.stack.clone().upcast();
         let mut node: Option<gtk::Widget> = Some(sp.pacman_toggle.clone().upcast());
@@ -799,7 +813,6 @@ line2",
         |_| {},
         Box::new(|| {}),
         Box::new(|| {}),
-        Box::new(|_| {}),
     );
     assert!(search.filter().pacman && search.filter().aur && search.filter().flatpak);
     search.set_results(&summaries(), &[], "firefox");
@@ -818,6 +831,25 @@ line2",
     let g1 = search.next_generation();
     let g2 = search.next_generation();
     assert!(g2 > g1, "搜索代号必须自增（用于丢弃过期响应）");
+
+    // 输入：推进代号（让在飞的旧响应作废）并记住最后一次查询（来源开关要用它重跑）
+    let g_before = search.generation();
+    search.search_entry().set_text("fire");
+    pump_main_loop(50);
+    assert_eq!(search.last_query(), "fire");
+    assert!(
+        search.generation() > g_before,
+        "输入必须推进搜索代号，否则旧响应会覆盖新结果"
+    );
+
+    // 清空输入：立刻回到提示态并清空结果（旧实现会留着上一次的结果）
+    search.set_results(&summaries(), &[], "fire");
+    assert_eq!(search.page.shell.state_name(), "content");
+    search.search_entry().set_text("");
+    search.clear_results();
+    assert_eq!(search.page.shell.state_name(), "empty");
+    assert_eq!(search.page.store.n_items(), 0, "清空后不得残留旧结果");
+    assert_eq!(search.last_query(), "");
 
     let category = CategoryPage::new(&ctx, |_| {}, Box::new(|| {}), Box::new(|| {}));
     category.connect_select(|_, _| {});

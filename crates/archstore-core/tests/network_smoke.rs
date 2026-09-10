@@ -18,6 +18,22 @@ fn offline() -> bool {
     std::env::var_os("ARCHSTORE_SKIP_NETWORK_TESTS").is_some()
 }
 
+/// MyMemory 是免费服务，每天有配额；用尽时应当**跳过**而不是判失败 ——
+/// 这是外部服务的限制，不是本项目的行为回归（配额恢复前谁也测不了）。
+///
+/// 两种表现都要认：HTTP 层把配额提示映射成 "请求过于频繁，N 秒后自动重试"，
+/// 响应体里则是 responseStatus != 200 + "MYMEMORY WARNING"（→ RateLimited）。
+fn translation_quota_exhausted(e: &archstore_core::CoreError) -> bool {
+    use archstore_core::CoreError;
+    match e {
+        CoreError::RateLimited { .. } => true,
+        CoreError::Network { url, cause } if url == "mymemory" => {
+            cause.contains("过于频繁") || cause.contains("配额") || cause.contains("quota")
+        }
+        _ => false,
+    }
+}
+
 async fn http() -> Arc<HttpClient> {
     HttpClient::new(NetworkConfig::default()).expect("client")
 }
@@ -551,10 +567,17 @@ async fn mymemory_translation_works_for_short_and_long_text() {
     );
 
     // 1) 短文本
-    let short = client
+    let short = match client
         .translate("Fast, Private & Safe Web Browser", "zh-CN", &cfg, &cancel)
         .await
-        .expect("短文本翻译必须成功");
+    {
+        Ok(v) => v,
+        Err(e) if translation_quota_exhausted(&e) => {
+            eprintln!("跳过在线翻译端到端：MyMemory 免费配额已用尽（{e}）");
+            return;
+        }
+        Err(e) => panic!("短文本翻译必须成功：{e}"),
+    };
     assert!(!short.text.is_empty());
     assert_eq!(short.provider, "MyMemory");
     assert_eq!(short.target, "zh-CN");

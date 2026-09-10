@@ -7,7 +7,7 @@
 //!
 //! 窄窗口（< 600sp）通过 AdwBreakpoint 自动折叠，不手写尺寸判断。
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 use adw::prelude::*;
@@ -189,7 +189,6 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
             },
             search_retry(&weak),
             nav_to_settings(&weak),
-            Box::new(|_q| {}),
         )
     });
 
@@ -1618,28 +1617,84 @@ fn refresh_after_transaction(main: &Rc<MainWindow>) {
     );
 }
 
-/// 搜索：按来源开关并行发起，各后端的错误只影响自己。
+/// 搜索触发：回车 / 输入防抖 / 来源开关，三条路径共用同一条 run_search。
+///
+/// 之前的实现有三个问题（用户实测反馈："搜索的限制不是实时生效"）：
+/// 1. 输入**根本不会触发搜索**，只把进度条点亮（README 与设计文档承诺的
+///    300 ms 防抖其实是一段空转代码），必须按回车；
+/// 2. 来源开关里**只有"本地"接了重跑**，勾掉 AUR / Flatpak 不会有任何变化；
+/// 3. 清空搜索框不会清掉旧结果。
+///
+/// 现在：输入 300 ms 防抖后自动搜索；任一来源开关变化立即用当前查询重跑；
+/// 清空输入立刻回到提示态。过期响应仍由 SearchPage 的 generation 丢弃。
 fn wire_search(main: &Rc<MainWindow>) {
-    let main_ref = main.clone();
-    main.search.search_entry().connect_activate(move |_| {
-        run_search(&main_ref);
-    });
-    let main_ref2 = main.clone();
-    main.search.search_entry().connect_search_changed(move |_| {
-        let text = main_ref2.search.search_entry().text().to_string();
-        if text.trim().is_empty() {
-            return;
-        }
-        // 立即显示加载态；真正的请求由 activate 或防抖后触发
-        main_ref2.search.show_loading();
-    });
-    // 来源开关变化后自动重跑一次
-    let main_ref3 = main.clone();
-    main.search.pacman_toggle.connect_toggled(move |_| {
-        if !main_ref3.search.last_query().trim().is_empty() {
-            run_search(&main_ref3);
-        }
-    });
+    let weak = Rc::downgrade(main);
+    // 防抖代际：每次输入 +1；来源开关触发的搜索也会 +1，作废还没到点的定时器
+    let debounce: Rc<Cell<u64>> = Rc::new(Cell::new(0));
+
+    // 1) 回车：立即搜索
+    {
+        let weak = weak.clone();
+        main.search.search_entry().connect_activate(move |_| {
+            if let Some(m) = weak.upgrade() {
+                run_search(&m);
+            }
+        });
+    }
+
+    // 2) 输入：防抖 DEBOUNCE_MS 后自动搜索；清空则立刻回到提示态
+    {
+        let weak = weak.clone();
+        let debounce = Rc::clone(&debounce);
+        main.search
+            .search_entry()
+            .connect_search_changed(move |entry| {
+                let generation = debounce.get() + 1;
+                debounce.set(generation);
+                let text = entry.text().to_string();
+                let Some(m) = weak.upgrade() else {
+                    return;
+                };
+                if text.trim().is_empty() {
+                    m.search.clear_results();
+                    return;
+                }
+                let weak = weak.clone();
+                let debounce = Rc::clone(&debounce);
+                glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(u64::from(crate::pages::search::DEBOUNCE_MS)),
+                    move || {
+                        // 已被更新的输入（或开关触发的搜索）取代 -> 这个定时器作废
+                        if debounce.get() != generation {
+                            return;
+                        }
+                        if let Some(m) = weak.upgrade() {
+                            run_search(&m);
+                        }
+                    },
+                );
+            });
+    }
+
+    // 3) 来源开关：任意一个变化都用当前查询立刻重跑
+    for toggle in [
+        main.search.pacman_toggle.clone(),
+        main.search.aur_toggle.clone(),
+        main.search.flatpak_toggle.clone(),
+    ] {
+        let weak = weak.clone();
+        let debounce = Rc::clone(&debounce);
+        toggle.connect_toggled(move |_| {
+            // 作废可能还在排队的防抖定时器，避免同一次操作发两次请求
+            debounce.set(debounce.get() + 1);
+            let Some(m) = weak.upgrade() else {
+                return;
+            };
+            if !m.search.last_query().trim().is_empty() {
+                run_search(&m);
+            }
+        });
+    }
 }
 
 /// 执行一次搜索（合并三个后端的结果）。

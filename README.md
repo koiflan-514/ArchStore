@@ -18,7 +18,8 @@
 ## 特性
 
 - **三源统一搜索**：官方仓库（libalpm）、AUR（RPC v5）、Flathub 一次查完，结果按匹配度合并排序；
-  来源开关默认**只查本地数据**，勾选后才联网。
+  来源开关默认**只查本地数据**，勾选后才联网。输入停止约 300 ms 自动搜索，
+  **来源开关勾选变化立即用当前关键字重跑**（不必再按回车）。
 - **计划式事务**：不存在"点击即静默执行"。先出计划清单（计划栏 → 计划详情 → 执行），
   再经 polkit 提权交给 helper 执行，全程有 JSON 事件流与进度面板。
 - **绝不 root 跑 GUI**：GTK 与 tokio 永远以普通用户运行，唯一的提权通道是 `archstore-helper`
@@ -134,7 +135,9 @@ AppStream metainfo、polkit policy、gschema、zh_CN / zh_TW 翻译与软件名�
 | 快捷键 | 作用 |
 | --- | --- |
 | `Ctrl+F` | 聚焦搜索框 |
-| `Enter` | 执行搜索（勾选了 AUR / Flatpak 才会联网） |
+| 直接输入 | 停止输入约 300 ms 后自动搜索（勾选了 AUR / Flatpak 才会联网） |
+| `Enter` | 立即执行搜索（不必等防抖） |
+| 来源开关 | 勾选/取消后**立刻**用当前关键字重跑 |
 | `F5` | 刷新已安装与可更新列表 |
 | `Ctrl+,` | 打开设置 |
 | `Esc` | 先返回上一页，其次清空搜索框 |
@@ -169,7 +172,7 @@ make check    # fmt --check + clippy -D warnings + 全部测试 + 依赖方向�
 | 单元测试 | 缓存（TTL/原子写/损坏自愈/LRU）、cache key 编码、包名白名单、计划 serde 往返与前向兼容、配置迁移与未知字段保留、事务状态机转移、依赖表达式解析、图标索引（AppStream 文件名消歧 / `.desktop` 解析 / 图标优先级） |
 | 契约测试 | `flatpak -j` 的 C locale 与中文 locale 两份固件、Flathub appstream/summary/collection 真实响应、安全公告的 null 字段 |
 | 集成测试（只读） | `AlpmWorker` 在本机真实数据库上打开/搜索/反依赖/`check_deps` |
-| 网络冒烟 | 同一个 `reqwest::Client` 打通 AUR 与 Flathub（TLS provider 冲突回归测试） |
+| 网络冒烟 | 同一个 `reqwest::Client` 打通 AUR 与 Flathub（TLS provider 冲突回归测试）；在线翻译端到端在 MyMemory 免费日配额用尽时**跳过**而不是判失败（外部服务限制） |
 | UI 冒烟 | `src/smoke.rs`：在 headless GTK 下构造**每一个页面与控件**（列表行/详情/截图槽位/依赖/计划栏/进度面板/设置页/三态外壳/ListStore 增量更新/状态机联动/远程图标回填）；无显示服务器时优雅跳过 |
 | 启动冒烟 | `xvfb-run ./target/release/archstore` 运行 15 秒：断言退出码为超时（进程存活）、无 `CRITICAL`、无 `last-crash.txt` |
 
@@ -291,6 +294,15 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
   （后者提示"换个关键字或切回全部"，不再误报成"读不到本地数据库"）。
   `smoke.rs` 加了结构性回归：筛选到 0 条时搜索框/下拉框仍在，且搜索框**不是**
   `PageShell.stack` 的后代；清空搜索后必须恢复全量列表。
+- **搜索的"限制"不是实时生效**（用户实测反馈）：设计文档写着"防抖 300 ms"，
+  但输入框的回调只是把进度条点亮，**真正的搜索只在按回车时才发生**；
+  来源开关里**只有"本地"接了重跑**，勾掉或勾上 AUR / Flatpak 完全没反应；
+  清空输入框也不会清掉上一次的结果。
+  现在三条触发路径都汇到同一条 `run_search`：输入 300 ms 防抖后自动搜索、
+  任一来源开关变化立即重跑、清空输入立刻回到提示态；过期响应仍由
+  `SearchPage` 的 generation 丢弃（`smoke.rs` 覆盖"输入必须推进代号"与"清空必须清结果"）。
+  顺带把 `GtkSearchEntry` 自带的 150 ms `search-changed` 延迟归零，
+  否则会和我们的防抖叠加成 450 ms。
 - **详情页没有返回键**：`AdwNavigationView` 只会往"页面里的 `AdwHeaderBar`"注入返回键，
   而详情页根控件原本是裸的 `GtkBox`。已包成 `AdwToolbarView + AdwHeaderBar`，
   并补了 `Esc`（先返回列表）与 `Alt+Left` 快捷键。回归测试用递归查找确认

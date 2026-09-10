@@ -22,8 +22,10 @@ pub struct SearchPage {
     toggles: Rc<RefCell<SourceFilter>>,
     /// 当前有效的搜索代号：用于丢弃过期响应
     generation: Rc<Cell<u64>>,
-    pending: Rc<Cell<bool>>,
-    /// 与防抖闭包共享（clone 一个 RefCell 只会复制内容，分页/查询状态会读不到）
+    /// 最后一次输入的内容（来源开关变化后要用它重跑搜索）。
+    ///
+    /// 用 `Rc<RefCell<…>>` 共享而不是 clone：`RefCell::clone()` 复制的是内容，
+    /// 各处会各持一份副本（这个坑本项目踩过一次）。
     last_query: Rc<RefCell<String>>,
     pub pacman_toggle: gtk::ToggleButton,
     pub aur_toggle: gtk::ToggleButton,
@@ -42,7 +44,6 @@ impl SearchPage {
         on_open: impl Fn(PackageSummary) + 'static,
         on_retry: Box<dyn Fn() + 'static>,
         on_settings: Box<dyn Fn() + 'static>,
-        on_search_aur: Box<dyn Fn(String) + 'static>,
     ) -> Self {
         let toggles = Rc::new(RefCell::new(SourceFilter::default()));
 
@@ -91,7 +92,6 @@ impl SearchPage {
             entry: entry.clone(),
             toggles: toggles.clone(),
             generation: Rc::new(Cell::new(0)),
-            pending: Rc::new(Cell::new(false)),
             last_query: Rc::new(RefCell::new(String::new())),
             pacman_toggle,
             aur_toggle,
@@ -115,48 +115,23 @@ impl SearchPage {
             });
         }
 
-        // 防抖：300ms 内的连续输入只触发一次真正的搜索
+        // GtkSearchEntry 默认把 search-changed 延迟 150 ms 才发；防抖已经由
+        // window::wire_search 的 300 ms 统一负责，这里把延迟归零，避免叠加成 450 ms。
+        entry.set_search_delay(0);
+
+        // 输入只做两件记账的事：记住最后一次查询（来源开关要用），并推进搜索代号。
+        //
+        // 真正的搜索由 window::wire_search 触发，三条路径都汇到 run_search：
+        //   · 回车 —— 立即搜索；
+        //   · 输入 —— 防抖 DEBOUNCE_MS 后自动搜索（这里只推进代号，让旧响应作废）；
+        //   · 来源开关 —— 任一开关变化立即重跑。
+        // 代号在每次输入时 +1，正在飞的请求回来时会被 set_results 的调用方丢弃。
         {
             let generation = Rc::clone(&this.generation);
-            let pending = Rc::clone(&this.pending);
             let last_query = Rc::clone(&this.last_query);
-            let on_search_aur = Rc::new(on_search_aur);
-            let page = this.page.clone();
             entry.connect_search_changed(move |e| {
-                let text = e.text().to_string();
-                *last_query.borrow_mut() = text.clone();
-                let this_gen = generation.get() + 1;
-                generation.set(this_gen);
-                if text.trim().is_empty() {
-                    page.store.remove_all();
-                    page.shell.show_empty(
-                        "edit-find-symbolic",
-                        &ui::t("输入关键字开始搜索"),
-                        &ui::t("默认只搜本地；勾选 AUR / Flatpak 会联网查询。"),
-                        None,
-                    );
-                    return;
-                }
-                pending.set(true);
-                page.progress.set_visible(true);
-                page.progress.pulse();
-                let generation = generation.clone();
-                let pending = pending.clone();
-                let page_clone = page.clone();
-                let on_search_aur = on_search_aur.clone();
-                glib::timeout_add_local_once(
-                    std::time::Duration::from_millis(DEBOUNCE_MS as u64),
-                    move || {
-                        // 过期请求直接丢弃（用户在这 300ms 内又输入了）
-                        if generation.get() != this_gen {
-                            return;
-                        }
-                        if pending.get() {
-                            page_clone.progress.set_visible(true);
-                        }
-                        let _ = &on_search_aur;
-                    },
-                );
+                *last_query.borrow_mut() = e.text().to_string();
+                generation.set(generation.get() + 1);
             });
         }
 
@@ -190,7 +165,6 @@ impl SearchPage {
         backend_errors: &[(String, String)],
         query: &str,
     ) {
-        self.pending.set(false);
         self.page.progress.set_visible(false);
         if !backend_errors.is_empty() {
             let text = backend_errors
@@ -215,6 +189,18 @@ impl SearchPage {
     pub fn show_loading(&self) {
         self.page.progress.set_visible(true);
         self.page.progress.pulse();
+    }
+
+    /// 搜索框被清空：回到"输入关键字开始搜索"，而不是继续显示上一次的结果。
+    pub fn clear_results(&self) {
+        self.page.progress.set_visible(false);
+        self.page.store.remove_all();
+        self.page.shell.show_empty(
+            "edit-find-symbolic",
+            &ui::t("输入关键字开始搜索"),
+            &ui::t("默认只搜本地；勾选 AUR / Flatpak 会联网查询。"),
+            None,
+        );
     }
 
     pub fn search_entry(&self) -> &gtk::SearchEntry {
