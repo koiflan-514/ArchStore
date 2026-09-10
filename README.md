@@ -362,21 +362,31 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
   "请从左侧选择一个分类"，**绝不残留上一个来源的列表**。切到"首页"同样会重新拉取
   Flathub 趋势（6 小时缓存命中时几乎瞬时）。`smoke.rs` 覆盖"各来源各自记住分类"
   与"新来源必须返回 None 而不是沿用上一个分类"。
-- **点底栏的删除按钮必崩**（用户实测反馈）：`AppState::reset()» 写成
-  `if let Ok(next) = self.tx.borrow().clone().apply(..) { *self.tx.borrow_mut() = next; }»，
-  临时 `Ref» 会活到整个 `if let» 语句结束（**包括分支体**），分支体里的 `borrow_mut()»
-  直接 panic `RefCell already borrowed»；panic hook 捕获后又在 GTK 回调里二次 panic
+- **点底栏的删除按钮必崩**（用户实测反馈）：`AppState::reset()` 写成
+  `if let Ok(next) = self.tx.borrow().clone().apply(..) { *self.tx.borrow_mut() = next; }`，
+  临时 `Ref` 会活到整个 `if let` 语句结束（**包括分支体**），分支体里的 `borrow_mut()`
+  直接 panic `RefCell already borrowed`；panic hook 捕获后又在 GTK 回调里二次 panic
   （"panic in a function that cannot unwind"），整个应用退出。
-  实测日志：`state.rs:232 RefCell already borrowed»。现在先克隆再回写，
+  实测日志：`state.rs:232 RefCell already borrowed`。现在先克隆再回写，
   并加了"连续 reset 两次不 panic"的回归测试。
 - **Flatpak 安装成功却弹"内部错误：在状态 Running … 下不能确认"**（用户实测反馈）：
-  计划栏的三个按钮被接了两遍（构造时的回调 + `wire_plan_bar»），一次点击会跑两次
-  `execute_plan» —— 第二次在 Running 上做 `Confirm»，于是弹错，而安装其实已经开始、
-  最终会成功。现在删掉重复接线，并在 `execute_plan» 开头加了"事务进行中直接返回"的幂等保护。
+  计划栏的三个按钮被接了两遍（构造时的回调 + `wire_plan_bar`），一次点击会跑两次
+  `execute_plan` —— 第二次在 Running 上做 `Confirm`，于是弹错，而安装其实已经开始、
+  最终会成功。现在删掉重复接线，并在 `execute_plan` 开头加了"事务进行中直接返回"的幂等保护。
 - **侧栏 / 底栏 / 顶部消息栏不能收起**（用户实测反馈）：头部新增两个开关按钮
-  （`sidebar-show-symbolic» 切 `AdwNavigationSplitView:show-sidebar»、
-  `go-bottom-symbolic» 切底栏可见性）；两条横幅（崩溃恢复、计划风险）都加了
+  （`sidebar-show-symbolic` 把 sidebar 从 split 上摘下来再装回去 ——
+  `AdwNavigationSplitView` 没有 `show-sidebar`，`show-content` 又只在窄窗口折叠时有效；
+  `go-bottom-symbolic` 切底栏可见性）；两条横幅（崩溃恢复、计划风险）都加了
   "知道了"按钮可以点掉。出现新计划时底栏会自动展开，避免用户看不到待确认的计划。
+- **外部安装/卸载后页面不更新，按刷新也不更新**（用户实测反馈：卸载 AUR 软件后
+  页面没变，按刷新还是没变）：刷新按钮与 F5 只调了 `load_installed` / `load_updates`，
+  **没有重开 libalpm 句柄** —— libalpm 的本地库是打开时读到的快照，alpm worker 的
+  本地索引也只建一次；终端里的 `paru/yay/pacman` 属于"外部事务"，不重开句柄就
+  永远看不到，**连手动刷新也无效**。
+  现在刷新（按钮 / F5）与事务后刷新统一走 `reload_everything`：先重开句柄、
+  重读 Flatpak 已安装索引，再刷新已安装 / 可更新 / 分类 / 当前页 / 详情 / 搜索；
+  另外新增**外部变更监听**：每 3 秒看一眼 `/var/lib/pacman/local`（以及 Flatpak
+  安装目录）的 mtime，变了就自动整页刷新 —— 终端里 `paru -R` 完成后界面几秒内自己跟上。
 - **软件改完页面不及时刷新**（用户实测反馈）：事务成功后只重开 alpm 句柄、刷新
   "已安装/可更新"，其它页面与详情页仍是旧状态。现在还会重读 Flatpak 的已安装索引，
   并刷新**当前可见页面**（首页 / 分类 / 可更新 / 搜索）以及**打开着的详情页**

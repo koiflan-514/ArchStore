@@ -8,6 +8,7 @@
 //! 窄窗口（< 600sp）通过 AdwBreakpoint 自动折叠，不手写尺寸判断。
 
 use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -481,6 +482,7 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
     wire_navigation(&main);
     wire_header(&main, &refresh, &updates_button, &settings_button);
     wire_search(&main);
+    wire_external_change_watch(&main);
     wire_settings(&main);
     wire_category(&main);
     wire_installed_filters(&main);
@@ -1367,10 +1369,8 @@ fn wire_header(
     {
         let main = main.clone();
         refresh.connect_clicked(move |_| {
-            load_installed(&main);
-            load_updates(&main);
-            load_categories(&main);
-            ui::toast(&main.toast, &ui::t("已刷新"));
+            // 必须先重开 libalpm 句柄，否则外部改动（终端里的 paru/pacman）看不到
+            reload_everything(&main, true);
         });
     }
     {
@@ -1663,8 +1663,18 @@ fn handle_helper_event(
     }
 }
 
-/// 事务完成后必须重新打开 alpm 句柄（libalpm 会缓存本地库）。
+/// 事务完成后刷新（见 [`reload_everything`]）。
 fn refresh_after_transaction(main: &Rc<MainWindow>) {
+    reload_everything(main, false);
+}
+
+/// **重开本地库句柄**并刷新全部页面数据。
+///
+/// 为什么必须先重开句柄：libalpm 的本地库是"打开时读到的快照"，而且 alpm worker
+/// 的本地索引只建一次。外部事务（终端里的 paru/yay/pacman、flatpak 命令）不会通知
+/// 本进程 —— 不重开句柄，**按刷新也永远是旧数据**。
+/// 用户实测：卸载 AUR 软件后页面不更新，按刷新还是不更新，就是这个原因。
+fn reload_everything(main: &Rc<MainWindow>, toast: bool) {
     let Some(services) = main.services.borrow().clone() else {
         return;
     };
@@ -1675,7 +1685,7 @@ fn refresh_after_transaction(main: &Rc<MainWindow>) {
                 let _ = p.refresh().await;
             }
             // Flatpak 后端的"已安装"是内存索引：不重读的话，
-            // 列表里的"已安装/可安装"药丸仍然是事务前的状态
+            // 列表里的"已安装/可安装"药丸仍然是旧状态
             if let Some(f) = services.flatpak.as_ref() {
                 let _ = f.list_installed().await;
             }
@@ -1684,9 +1694,62 @@ fn refresh_after_transaction(main: &Rc<MainWindow>) {
         move |_| {
             load_installed(&main_ref);
             load_updates(&main_ref);
+            load_categories(&main_ref);
             refresh_visible_after_transaction(&main_ref);
+            if toast {
+                ui::toast(&main_ref.toast, &ui::t("已刷新"));
+            }
         },
     );
+}
+
+/// 盯住"外部软件变更"：终端里的 paru/pacman、flatpak 命令都不会通知本进程。
+///
+/// 每 3 秒看一眼本地库与 flatpak 安装目录的 mtime，变了就整页刷新
+/// （用户实测：卸载 AUR 软件后页面一直不更新）。
+fn wire_external_change_watch(main: &Rc<MainWindow>) {
+    let watched: Vec<PathBuf> = {
+        let mut v = vec![
+            PathBuf::from("/var/lib/pacman/local"),
+            PathBuf::from("/var/lib/pacman/local/ALPM_DB_VERSION"),
+            PathBuf::from("/var/lib/flatpak/app"),
+        ];
+        if let Some(home) = std::env::var_os("HOME") {
+            v.push(PathBuf::from(home).join(".local/share/flatpak/app"));
+        }
+        v
+    };
+    let last = Rc::new(Cell::new(mtimes(&watched)));
+    let weak = Rc::downgrade(main);
+    glib::timeout_add_seconds_local(3, move || {
+        let Some(main) = weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let now = mtimes(&watched);
+        if now != last.get() {
+            last.set(now);
+            // 事务进行中不打断：它结束时会自己刷新
+            if !main.state.tx.borrow().is_running() && main.services.borrow().is_some() {
+                tracing::debug!("检测到外部软件变更，自动刷新");
+                reload_everything(&main, false);
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+/// 取若干路径的 mtime（秒）；缺失或出错记 0。
+fn mtimes(paths: &[PathBuf]) -> (u64, u64, u64, u64) {
+    let mut out = [0u64; 4];
+    for (slot, path) in out.iter_mut().zip(paths.iter()) {
+        *slot = std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+    }
+    (out[0], out[1], out[2], out[3])
 }
 
 /// 事务结束后把"用户当前正看着的东西"刷新一遍（用户实测反馈：软件改了页面不及时刷新）。
@@ -2056,8 +2119,7 @@ fn wire_shortcuts(main: &Rc<MainWindow>) {
     add("F5", {
         let m = main_ref.clone();
         Box::new(move || {
-            load_installed(&m);
-            load_updates(&m);
+            reload_everything(&m, false);
         })
     });
     add("<Control>f", {
