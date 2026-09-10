@@ -186,6 +186,141 @@ async fn reverse_dependencies_match_measured_values() {
 }
 
 #[tokio::test]
+async fn unneeded_dependencies_are_depend_reason_and_still_orphans() {
+    if !pacman_available() {
+        return;
+    }
+    let worker = AlpmWorker::spawn().expect("spawn worker");
+    worker.wait_ready().await.expect("ready");
+
+    // 空删除集 / 未安装的名字：必须是空结果而不是报错（卸载计划永远能构建）
+    let empty = worker
+        .request(AlpmOp::Unneeded {
+            removing: Vec::new(),
+        })
+        .await
+        .expect("empty");
+    let AlpmPayload::Unneeded(list) = empty else {
+        panic!("unexpected payload");
+    };
+    assert!(list.is_empty());
+    let ghost = worker
+        .request(AlpmOp::Unneeded {
+            removing: vec!["definitely-not-installed-xyz".into()],
+        })
+        .await
+        .expect("ghost");
+    let AlpmPayload::Unneeded(list) = ghost else {
+        panic!("unexpected payload");
+    };
+    assert!(list.is_empty(), "未安装的目标不应产生清理项");
+
+    // glibc 必定存在；删除它之后"不再被需要"的依赖必须满足两条硬性质：
+    // 1) 全部是"作为依赖安装"的包（显式安装的包绝不自动删除）；
+    // 2) 反向依赖全部落在删除集内部（否则会破坏其它软件）。
+    let installed = worker.request(AlpmOp::Installed).await.expect("installed");
+    let AlpmPayload::Summaries(installed) = installed else {
+        panic!("unexpected payload");
+    };
+    let explicit: std::collections::HashMap<String, bool> = installed
+        .iter()
+        .filter_map(|s| match &s.installed {
+            archstore_core::model::Installed::Yes { explicit, .. } => {
+                Some((s.id.name.clone(), *explicit))
+            }
+            _ => None,
+        })
+        .collect();
+
+    let payload = worker
+        .request(AlpmOp::Unneeded {
+            removing: vec!["glibc".to_string()],
+        })
+        .await
+        .expect("unneeded");
+    let AlpmPayload::Unneeded(unneeded) = payload else {
+        panic!("unexpected payload");
+    };
+    eprintln!("删除 glibc 后的多余依赖：{} 项", unneeded.len());
+    let mut removal: Vec<String> = vec!["glibc".to_string()];
+    removal.extend(unneeded.iter().map(|p| p.name.clone()));
+    for p in &unneeded {
+        assert!(
+            installed.iter().any(|s| s.id.name == p.name),
+            "{} 必须是已安装的包",
+            p.name
+        );
+        assert_eq!(
+            explicit.get(&p.name).copied(),
+            Some(false),
+            "{} 是显式安装的包，绝不能自动清理",
+            p.name
+        );
+        let rev = worker
+            .request(AlpmOp::RevDeps {
+                name: p.name.clone(),
+            })
+            .await
+            .expect("revdeps");
+        let AlpmPayload::RevDeps(rev) = rev else {
+            panic!("unexpected payload");
+        };
+        for r in &rev {
+            assert!(
+                removal.contains(&r.name),
+                "{} 仍被 {} 需要，不能出现在清理范围里",
+                p.name,
+                r.name
+            );
+        }
+    }
+
+    // 正向验证：上面的性质断言在"空结果"上会假装通过，因此必须找一个真实存在的
+    // "依赖包 D + 它的全部反向依赖 R"组合：把 R 整批删掉之后，D 必须出现在清理范围里。
+    let mut found = false;
+    for s in &installed {
+        if s.installed.is_dependency() && !explicit.get(&s.id.name).copied().unwrap_or(true) {
+            let Ok(AlpmPayload::RevDeps(rev)) = worker
+                .request(AlpmOp::RevDeps {
+                    name: s.id.name.clone(),
+                })
+                .await
+            else {
+                continue;
+            };
+            if rev.is_empty() || rev.len() > 3 {
+                continue;
+            }
+            if !rev.iter().all(|r| explicit.contains_key(&r.name)) {
+                continue;
+            }
+            let removing: Vec<String> = rev.iter().map(|r| r.name.clone()).collect();
+            let AlpmPayload::Unneeded(list) = worker
+                .request(AlpmOp::Unneeded {
+                    removing: removing.clone(),
+                })
+                .await
+                .expect("unneeded")
+            else {
+                panic!("unexpected payload");
+            };
+            assert!(
+                list.iter().any(|p| p.name == s.id.name),
+                "删掉 {:?} 之后 {} 不再被需要，必须列入清理范围",
+                removing,
+                s.id.name
+            );
+            eprintln!("正向用例：删除 {:?} 会清理 {}", removing, s.id.name);
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        eprintln!("本机没有合适的单依赖样本，跳过正向验证");
+    }
+}
+
+#[tokio::test]
 async fn refresh_reopens_handle_without_losing_repos() {
     if !pacman_available() {
         return;

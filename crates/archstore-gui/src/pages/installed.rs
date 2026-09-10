@@ -19,6 +19,7 @@ pub enum InstalledFilter {
     Dependency,
     Upgradable,
     Foreign,
+    Flatpak,
 }
 
 impl InstalledFilter {
@@ -29,6 +30,7 @@ impl InstalledFilter {
             InstalledFilter::Dependency => ui::t("依赖"),
             InstalledFilter::Upgradable => ui::t("可更新"),
             InstalledFilter::Foreign => ui::t("外来包（可能来自 AUR）"),
+            InstalledFilter::Flatpak => ui::t("Flatpak 应用"),
         }
     }
 
@@ -43,8 +45,34 @@ impl InstalledFilter {
             InstalledFilter::Foreign => {
                 matches!(s.id.source, archstore_core::model::PackageSource::Aur)
             }
+            InstalledFilter::Flatpak => {
+                matches!(
+                    s.id.source,
+                    archstore_core::model::PackageSource::Flatpak { .. }
+                )
+            }
         }
     }
+}
+
+/// 合并"已安装"页的多个来源（官方仓库 + Flatpak 等），按包名排序。
+///
+/// 去重键是 **(来源, 名字)**：Flatpak 应用 ID 与 pacman 包名属于两个命名空间，
+/// 恰好同名并不代表同一个软件，因此绝不能靠包名互相顶掉。
+/// 传进来的顺序决定同键条目的取舍（前面的优先）。
+pub fn merge_installed_sources(sources: Vec<Vec<PackageSummary>>) -> Vec<PackageSummary> {
+    let mut seen: std::collections::HashSet<archstore_core::model::PackageId> =
+        std::collections::HashSet::new();
+    let mut out: Vec<PackageSummary> = Vec::new();
+    for source in sources {
+        for item in source {
+            if seen.insert(item.id.clone()) {
+                out.push(item);
+            }
+        }
+    }
+    out.sort_by(|a, b| a.id.name.cmp(&b.id.name));
+    out
 }
 
 /// 已安装页。
@@ -84,6 +112,7 @@ impl InstalledPage {
             &InstalledFilter::Dependency.label(),
             &InstalledFilter::Upgradable.label(),
             &InstalledFilter::Foreign.label(),
+            &InstalledFilter::Flatpak.label(),
         ]);
         filter_dropdown.set_margin_start(12);
         filter_dropdown.set_margin_end(12);
@@ -191,6 +220,7 @@ impl InstalledPage {
             2 => InstalledFilter::Dependency,
             3 => InstalledFilter::Upgradable,
             4 => InstalledFilter::Foreign,
+            5 => InstalledFilter::Flatpak,
             _ => InstalledFilter::All,
         };
         *self.filter.borrow_mut() = filter;
@@ -208,5 +238,80 @@ impl InstalledPage {
 
     pub fn total_count(&self) -> usize {
         self.all.borrow().len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use archstore_core::model::{Installed, PackageId};
+
+    fn installed_summary(
+        source: archstore_core::model::PackageSource,
+        name: &str,
+    ) -> PackageSummary {
+        let mut s = PackageSummary::minimal(
+            PackageId {
+                source,
+                name: name.into(),
+            },
+            name,
+        );
+        s.installed = Installed::Yes {
+            version: "1.0".into(),
+            explicit: true,
+        };
+        s
+    }
+
+    #[test]
+    fn merge_keeps_flatpak_apps_next_to_repo_packages() {
+        let pacman = vec![installed_summary(
+            archstore_core::model::PackageSource::Official {
+                repo: "extra".into(),
+            },
+            "firefox",
+        )];
+        let flatpak = vec![installed_summary(
+            archstore_core::model::PackageSource::Flatpak {
+                remote: "flathub".into(),
+            },
+            "org.mozilla.firefox",
+        )];
+        let merged = merge_installed_sources(vec![pacman, flatpak]);
+        assert_eq!(merged.len(), 2, "Flatpak 项不能落下");
+        assert_eq!(merged[0].id.name, "firefox");
+        assert_eq!(merged[1].id.name, "org.mozilla.firefox");
+        assert!(merged.iter().any(|s| InstalledFilter::Flatpak.matches(s)));
+    }
+
+    #[test]
+    fn merge_dedupes_within_the_same_source() {
+        let dup = installed_summary(
+            archstore_core::model::PackageSource::Official {
+                repo: "extra".into(),
+            },
+            "vim",
+        );
+        let merged = merge_installed_sources(vec![vec![dup.clone(), dup]]);
+        assert_eq!(merged.len(), 1, "同一来源里的重复条目必须去掉");
+    }
+
+    #[test]
+    fn flatpak_filter_matches_only_flatpak() {
+        let fp = installed_summary(
+            archstore_core::model::PackageSource::Flatpak {
+                remote: "flathub".into(),
+            },
+            "org.gnome.Calculator",
+        );
+        let official = installed_summary(
+            archstore_core::model::PackageSource::Official {
+                repo: "extra".into(),
+            },
+            "gnome-calculator",
+        );
+        assert!(InstalledFilter::Flatpak.matches(&fp));
+        assert!(!InstalledFilter::Flatpak.matches(&official));
     }
 }

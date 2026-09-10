@@ -31,6 +31,8 @@ pub struct DetailCallbacks {
     pub on_homepage: Option<Box<dyn Fn(String)>>,
     /// 依赖选择变化（用于更新计划）
     pub on_deps_changed: Option<Box<dyn Fn(crate::widgets::dep_list::DepSelection)>>,
+    /// 单击第 N 张演示图片（截图）。截图槽位有多个，而回调只能有一个，故用 Rc。
+    pub on_screenshot: Option<std::rc::Rc<dyn Fn(usize)>>,
 }
 
 /// 截图槽位上限（与 §7.4 的横向滚动区域一致）。
@@ -233,15 +235,31 @@ impl DetailView {
         if screenshot_urls.is_empty() {
             shot_scroll.set_visible(false);
         } else {
-            for url in &screenshot_urls {
+            for (index, url) in screenshot_urls.iter().enumerate() {
                 // GtkPicture 没有"从 URL 异步加载"的 API（v0.1.0 的 set_from_file_async 不存在），
                 // 因此先放占位，下载到本地缓存后再 set_file。
                 let picture = gtk::Picture::new();
                 picture.set_size_request(320, 180);
                 picture.set_content_fit(gtk::ContentFit::Contain);
                 picture.add_css_class("screenshot");
-                picture.set_tooltip_text(Some(url));
-                screenshots.append(&picture);
+
+                // 单击查看大图：包一层无边框 GtkButton，
+                // 既拿到 hover/焦点反馈与键盘可达性（Enter/Space），也不必手写手势识别。
+                let button = gtk::Button::builder()
+                    .child(&picture)
+                    .has_frame(false)
+                    .css_classes(["screenshot-button"])
+                    .tooltip_text(format!(
+                        "{}\n{}\n{url}",
+                        ui::t("单击查看大图"),
+                        ui::t("也可以在查看器里用 ← → 切换、Esc 关闭")
+                    ))
+                    .build();
+                if let Some(cb) = &callbacks.on_screenshot {
+                    let cb = std::rc::Rc::clone(cb);
+                    button.connect_clicked(move |_| cb(index));
+                }
+                screenshots.append(&button);
                 screenshot_slots.push(picture);
             }
         }
@@ -432,6 +450,18 @@ impl DetailView {
             .get(index)
             .and_then(|p| p.file())
             .is_some()
+    }
+
+    /// 某个槽位已下载到本地的文件（尚未下载完成时为 None）。
+    ///
+    /// 单击查看大图时用它把"详情页里那张缩略图"原样交给查看器，
+    /// 不会再发一次网络请求，也不会因为缓存过期而看到另一张图。
+    pub fn screenshot_file(&self, index: usize) -> Option<std::path::PathBuf> {
+        self.screenshot_slots
+            .borrow()
+            .get(index)
+            .and_then(|p| p.file())
+            .and_then(|f| f.path())
     }
 }
 

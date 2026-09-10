@@ -172,6 +172,8 @@ pub enum PlanItemReason {
     Dependency,
     /// 构建依赖（AUR）
     BuildDependency,
+    /// 卸载后不再被需要的依赖（`pacman -Rns` 的清理范围）
+    Unneeded,
 }
 
 impl PlanItemReason {
@@ -180,6 +182,7 @@ impl PlanItemReason {
             PlanItemReason::Explicit => "显式",
             PlanItemReason::Dependency => "依赖",
             PlanItemReason::BuildDependency => "构建依赖",
+            PlanItemReason::Unneeded => "多余依赖",
         }
     }
 }
@@ -237,6 +240,17 @@ impl PlanItem {
         validate_name(&self.name)?;
         match (&self.source, kind.is_flatpak()) {
             (PlanSource::Official { repo }, false) => {
+                // 卸载计划允许空仓库名：`pacman -Rns` 不按仓库解析，
+                // 仓库名只是展示信息（级联删除到的外来包在同步库里没有归属）。
+                // 安装计划仍然必须指明仓库，否则用户看不出包从哪来。
+                if repo.is_empty() {
+                    if kind.is_remove() {
+                        return Ok(());
+                    }
+                    return Err(CoreError::PlanRejected {
+                        reason: format!("安装计划缺少仓库名：{}", self.name),
+                    });
+                }
                 // 仓库名来自 pacman.conf，同样不允许出现路径分隔符或前导横线
                 validate_name(repo).map_err(|_| CoreError::PlanRejected {
                     reason: format!("仓库名不合法：{repo:?}"),
@@ -333,20 +347,30 @@ impl TransactionPlan {
 
     /// 追加一项，并同步更新摘要。
     pub fn push(&mut self, item: PlanItem) {
-        // 摘要的动词必须看计划类型：卸载计划写"安装"会误导用户
-        // （这是端到端实测时在 helper 的输出里发现的）。
+        // 摘要的动词必须看计划类型与条目原因：卸载计划写"安装"会误导用户
+        // （这是端到端实测时在 helper 的输出里发现的）；
+        // 删除计划里"目标包 / 连带删除 / 多余依赖"也必须看得出区别（§9.3）。
         let verb = match (self.kind.is_remove(), item.reason) {
-            (true, _) => "卸载",
+            (true, PlanItemReason::Explicit) => "卸载",
+            (true, PlanItemReason::Dependency) => "连带卸载",
+            (true, PlanItemReason::Unneeded) => "清理多余依赖",
+            (true, PlanItemReason::BuildDependency) => "清理构建依赖",
             (false, PlanItemReason::Explicit) => "安装",
             (false, PlanItemReason::Dependency) => "依赖",
+            (false, PlanItemReason::Unneeded) => "多余依赖",
             (false, PlanItemReason::BuildDependency) => "构建依赖",
         };
-        let line = format!(
-            "{} {}（{}）",
-            verb,
-            item.name,
-            item.target_version.as_deref().unwrap_or("最新版本")
-        );
+        // 删除类条目没有"目标版本"可言，写"（最新版本）"会误导用户
+        let line = if self.kind.is_remove() {
+            format!("{verb} {}", item.name)
+        } else {
+            format!(
+                "{} {}（{}）",
+                verb,
+                item.name,
+                item.target_version.as_deref().unwrap_or("最新版本")
+            )
+        };
         self.summary.push(line);
         self.items.push(item);
     }
@@ -590,14 +614,14 @@ mod tests {
 
     #[test]
     fn summary_verb_follows_plan_kind() {
-        // 卸载计划的摘要不能写"安装"
+        // 卸载计划的摘要不能写"安装"，也不能写"（最新版本）"
         let mut sync = TransactionPlan::new(PlanKind::PacmanSync);
         sync.push(PlanItem::official("extra", "firefox"));
         assert_eq!(sync.summary[0], "安装 firefox（最新版本）");
 
         let mut remove = TransactionPlan::new(PlanKind::PacmanRemove);
         remove.push(PlanItem::official("extra", "firefox"));
-        assert_eq!(remove.summary[0], "卸载 firefox（最新版本）");
+        assert_eq!(remove.summary[0], "卸载 firefox");
 
         let mut fp_remove = TransactionPlan::new(PlanKind::FlatpakUninstall);
         fp_remove.push(PlanItem::flatpak(
@@ -607,11 +631,46 @@ mod tests {
         ));
         assert!(fp_remove.summary[0].starts_with("卸载"));
 
-        // 依赖项即使出现在卸载计划里也用"卸载"
+        // 连带删除的反向依赖与"多余依赖"必须一眼可区分（§9.3 展示清理范围）
         let mut dep_in_remove = TransactionPlan::new(PlanKind::PacmanRemove);
         dep_in_remove
             .push(PlanItem::official("extra", "gtk3").with_reason(PlanItemReason::Dependency));
-        assert!(dep_in_remove.summary[0].starts_with("卸载"));
+        assert!(dep_in_remove.summary[0].starts_with("连带卸载"));
+
+        let mut unneeded_in_remove = TransactionPlan::new(PlanKind::PacmanRemove);
+        unneeded_in_remove
+            .push(PlanItem::official("extra", "gtk3").with_reason(PlanItemReason::Unneeded));
+        assert_eq!(unneeded_in_remove.summary[0], "清理多余依赖 gtk3");
+        assert_eq!(PlanItemReason::Unneeded.label(), "多余依赖");
+    }
+
+    #[test]
+    fn remove_plan_may_omit_repo_but_install_plan_may_not() {
+        // 卸载：仓库名只是展示信息，允许为空（级联删除到的外来包没有同步库归属）
+        let mut remove = TransactionPlan::new(PlanKind::PacmanRemove);
+        remove.push(PlanItem::official(String::new(), "gtk3"));
+        assert!(remove.validate().is_ok(), "卸载计划应接受空仓库名");
+
+        // 安装：必须指明仓库
+        let mut sync = TransactionPlan::new(PlanKind::PacmanSync);
+        sync.push(PlanItem::official(String::new(), "gtk3"));
+        let err = sync.validate().expect_err("安装计划缺少仓库名必须拒绝");
+        assert!(matches!(err, CoreError::PlanRejected { .. }));
+
+        // 非空但非法的仓库名在任何计划里都要拒绝
+        let mut bad = TransactionPlan::new(PlanKind::PacmanRemove);
+        bad.push(PlanItem::official("../etc", "gtk3"));
+        assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn orphan_reason_roundtrips_through_json() {
+        let mut plan = TransactionPlan::new(PlanKind::PacmanRemove);
+        plan.push(PlanItem::official("extra", "firefox"));
+        plan.push(PlanItem::official(String::new(), "gtk3").with_reason(PlanItemReason::Unneeded));
+        let back = TransactionPlan::from_json(&plan.to_json().expect("ser")).expect("deserialize");
+        assert_eq!(back.items[1].reason, PlanItemReason::Unneeded);
+        assert_eq!(back.summary[1], "清理多余依赖 gtk3");
     }
 
     #[test]

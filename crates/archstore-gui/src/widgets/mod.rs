@@ -6,6 +6,7 @@
 
 pub mod dep_list;
 pub mod error_view;
+pub mod image_viewer;
 pub mod package_detail_view;
 pub mod package_row;
 pub mod plan_bar;

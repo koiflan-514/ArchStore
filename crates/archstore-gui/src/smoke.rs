@@ -170,12 +170,31 @@ fn slot_image(widget: &gtk::Widget) -> Option<gtk::Image> {
     holder.last_child().and_downcast::<gtk::Image>()
 }
 
+/// 控件树里是否存在"已经装了文件"的 GtkPicture（查看器是否真的显示了图）。
+fn picture_has_file(root: &gtk::Widget) -> bool {
+    let mut stack = vec![root.clone()];
+    while let Some(w) = stack.pop() {
+        if let Some(picture) = w.downcast_ref::<gtk::Picture>()
+            && picture.file().is_some()
+        {
+            return true;
+        }
+        let mut child = w.first_child();
+        while let Some(c) = child {
+            stack.push(c.clone());
+            child = c.next_sibling();
+        }
+    }
+    false
+}
+
 fn noop_callbacks() -> DetailCallbacks {
     DetailCallbacks {
         on_primary: Box::new(|| {}),
         on_remove: Some(Box::new(|| {})),
         on_homepage: Some(Box::new(|_| {})),
         on_deps_changed: None,
+        on_screenshot: None,
     }
 }
 
@@ -594,6 +613,7 @@ fn ui_smoke_builds_every_page_and_widget() {
             on_remove: None,
             on_homepage: None,
             on_deps_changed: None,
+            on_screenshot: None,
         },
     );
     assert_eq!(
@@ -743,6 +763,14 @@ line2",
     installed.refresh();
     assert_eq!(installed.visible_count(), 4);
     assert_eq!(installed.filter(), InstalledFilter::All);
+
+    // "我的"里必须能看到 Flatpak 应用（用户实测反馈：Flatpak 项不能落下）
+    installed.set_filter(InstalledFilter::Flatpak, "");
+    assert_eq!(installed.visible_count(), 1, "只有 Flathub 版 Firefox");
+    installed.set_filter_index(5);
+    assert_eq!(installed.filter(), InstalledFilter::Flatpak);
+    assert_eq!(installed.visible_count(), 1, "下拉框第 6 项 = Flatpak 应用");
+    installed.set_filter(InstalledFilter::All, "");
 
     // 下拉框切换必须**立即**生效：旧实现只改筛选状态、不重新应用，
     // 于是"选了分组但列表没变"，要等下一次输入搜索框才刷新（用户实测反馈）。
@@ -1017,6 +1045,68 @@ line2",
     .expect("write png");
     view.set_screenshot(0, &shot);
     assert!(view.screenshot_loaded(0), "回填后槽位必须持有文件");
+
+    // ---------- 单击演示图片必须能查看大图（用户实测需求）----------
+    {
+        // 1) 截图必须包在可点击控件里，并且点击会把**索引**交给回调
+        let clicked = Rc::new(std::cell::Cell::new(None::<usize>));
+        let cb_clicked = Rc::clone(&clicked);
+        let view_click = DetailView::new(
+            &detail(),
+            &ctx,
+            DetailCallbacks {
+                on_primary: Box::new(|| {}),
+                on_remove: None,
+                on_homepage: None,
+                on_deps_changed: None,
+                on_screenshot: Some(Rc::new(move |index| cb_clicked.set(Some(index)))),
+            },
+        );
+        view_click.set_screenshot(0, &shot);
+        assert_eq!(
+            view_click.screenshot_file(0).as_deref(),
+            Some(shot.as_path()),
+            "查看器要拿到详情页里那张已下载的图"
+        );
+        let button = view_click
+            .screenshot_container()
+            .first_child()
+            .and_downcast::<gtk::Button>()
+            .expect("截图必须包在可点击的按钮里");
+        button.emit_clicked();
+        assert_eq!(clicked.get(), Some(0), "单击第 0 张截图必须回调第 0 张");
+
+        // 2) 查看器：真的开出一个独立窗口，并且显示的是那张图
+        let parent = adw::ApplicationWindow::builder().build();
+        parent.present();
+        let before = gtk::Window::list_toplevels().len();
+        let urls = vec!["https://dl.flathub.org/a/1.png".to_string()];
+        let files = vec![Some(shot.clone())];
+        crate::widgets::image_viewer::show(&parent, &urls, &files, 0);
+        pump_main_loop(80);
+        let toplevels = gtk::Window::list_toplevels();
+        assert!(
+            toplevels.len() > before,
+            "单击截图后必须打开查看器窗口（{} -> {}）",
+            before,
+            toplevels.len()
+        );
+        let viewer_title = ui::t("查看演示图片");
+        let viewer = toplevels
+            .iter()
+            .filter_map(|w| w.clone().downcast::<gtk::Window>().ok())
+            .find(|w| w.title().as_deref() == Some(viewer_title.as_str()))
+            .expect("应能找到查看器窗口");
+        assert!(
+            picture_has_file(&viewer.clone().upcast()),
+            "查看器必须显示已下载的截图文件"
+        );
+        // 尚未下载完的槽位不能空白：查看器要有占位提示
+        crate::widgets::image_viewer::show(&parent, &urls, &[None], 0);
+        pump_main_loop(80);
+        viewer.close();
+        parent.close();
+    }
 
     // 截图数量受上限约束
     let mut many = detail();

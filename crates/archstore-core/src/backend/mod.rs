@@ -158,6 +158,21 @@ pub trait PackageBackend: Send + Sync {
 
     /// 反向依赖（卸载前警告用）
     async fn reverse_dependencies(&self, id: &PackageId) -> Result<Vec<PackageId>, CoreError>;
+
+    /// 卸载 `targets` 之后**不再被任何已安装包需要**的依赖（"多余依赖"）。
+    ///
+    /// project.md §9.3：`pacman -Rns` 会隐式清理这些包，但清理范围必须逐条写进计划，
+    /// 不能像命令行那样省略。`targets` 必须是**完整**的删除集合
+    /// （目标包 + 用户确认级联删除的反向依赖），否则共同依赖会被误判成多余。
+    ///
+    /// 默认实现返回空：只有 pacman 后端有"显式安装 / 作为依赖安装"的概念，
+    /// Flatpak 与 AUR 没有对应的清理语义。
+    async fn unneeded_dependencies(
+        &self,
+        _targets: &[PackageId],
+    ) -> Result<Vec<PackageId>, CoreError> {
+        Ok(Vec::new())
+    }
 }
 
 /// 已安装包的内存快照。

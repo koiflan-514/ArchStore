@@ -6,6 +6,7 @@
 //! 用法：
 //!   cargo run --release -p archstore-core --example make-plan -- <输出目录> install <包名> [仓库]
 //!   cargo run --release -p archstore-core --example make-plan -- <输出目录> remove  <包名> [仓库]
+//!   cargo run --release -p archstore-core --example make-plan -- <输出目录> remove-cascade <包名> [仓库]
 //!   cargo run --release -p archstore-core --example make-plan -- <输出目录> flatpak-install <应用 ID> [remote]
 //!
 //! stdout 只输出计划文件的绝对路径，便于脚本捕获：
@@ -103,8 +104,16 @@ async fn main() -> std::process::ExitCode {
             archstore_core::plan::build_remove_plan(&backends, std::slice::from_ref(&id), false)
                 .await
         }
+        // 级联卸载（用户在反依赖对话框里点了"同时删除这些包"）：
+        // 计划里必须同时列出连带删除的包与不再需要的依赖（§9.3）。
+        "remove-cascade" => {
+            archstore_core::plan::build_remove_plan(&backends, std::slice::from_ref(&id), true)
+                .await
+        }
         other => {
-            eprintln!("未知动作：{other}（应为 install / remove / flatpak-install）");
+            eprintln!(
+                "未知动作：{other}（应为 install / remove / remove-cascade / flatpak-install）"
+            );
             return std::process::ExitCode::from(2);
         }
     };

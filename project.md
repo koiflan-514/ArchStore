@@ -1168,12 +1168,18 @@ msgfmt --check -o /dev/null po/zh_CN.po     # CI 必须跑，检查格式错误�
             155.0.1-1 · 官方仓库 extra · 88.2 MB 下载 / 309.9 MB 安装
             MPL-2.0 · 维护者 Mozilla · 主页 ↗
 ────────────────────────────────────────────────────────────────
-[ 截图横向滚动 ]
+[ 截图横向滚动（每张单击查看大图） ]
 [ 描述（可展开，支持 Pango markup，渲染前必须 gtk::pango::parse_markup 校验） ]
 [ 权限（仅 Flatpak）]
 [ 依赖 (24) ▾ ]   ← 可展开列表，见 §8
 [ 详情 ] 包名 / 版本历史（若可得）/ 安装日期 / 原因（显式 or 依赖）
 ```
+
+**演示图片必须能放大看**：截图槽位外面包一层无边框 `GtkButton`
+（hover 高亮 + 键盘可达），单击打开独立的大图查看器
+（`widgets/image_viewer.rs`：`←`/`→` 切换、`Esc` 关闭、标题显示 `N / M`）。
+查看器读的是详情页**已经下载到本地缓存**的那份文件（`screenshot_file(i)`），
+不重新发起网络请求；尚未下载完的槽位显示"图片尚未下载完成"的占位提示。
 
 ### 7.5 CSS（`style.css`）
 
@@ -1191,6 +1197,8 @@ msgfmt --check -o /dev/null po/zh_CN.po     # CI 必须跑，检查格式错误�
 .state-pill.orphan     { color: @warning_color; }
 .dep-missing        { color: @error_color; }
 .dep-build          { opacity: 0.75; }
+.screenshot-button:hover .screenshot { background-color: alpha(@accent_bg_color, 0.25); }
+.screenshot-viewer  { background-color: alpha(black, 0.92); }   /* 大图查看器 */
 ```
 
 CSS 通过 `gtk::CssProvider` 加载并 `StyleContext::add_provider_for_display`，
@@ -1256,7 +1264,12 @@ pub struct DependencyInfo {
 
 ### 9.1 已安装页
 
-- 数据源：`localdb().pkgs()`（实测 972 个包），一次读取后在内存建立索引。
+- 数据源：`localdb().pkgs()`（实测 972 个包）**加上 Flatpak 已安装应用**
+  （`flatpak list --app`）。两者按包名合并去重，去重键是 **(来源, 包名)**：
+  Flatpak 应用 ID 与 pacman 包名不是同一命名空间。
+- Flatpak 侧读取失败只降级为"没有这一部分"（`tracing::warn` + 其余照常显示），
+  不把整页变成错误页；**已安装快照仍然只收 pacman 侧**，因为它是 AUR 后端判断
+  "是否已安装"的依据。
 - 列：名称、版本、来源、安装大小（`pkg.isize()`）、安装日期（`pkg.install_date()`）、
   状态药丸（显式安装 / 依赖 / 可更新 / 孤儿 / 外部包）。
 - 筛选：来源（仓库 / AUR 外来包 / Flatpak）、状态、搜索框（本地过滤，不联网）。
@@ -1291,12 +1304,35 @@ pub fn build_remove_plan(
     // 1) 反依赖检查（非 root，只读）
     // 2) 有反依赖且 !cascade → 返回 Err(CoreError::ReverseDeps{..})，由 UI 询问用户
     // 3) 生成 PlanKind::PacmanRemove / FlatpakUninstall
-    // 4) helper 会再次独立校验并自行计算依赖
+    // 4) 计算"多余依赖"（见下）并逐条加入计划
+    // 5) helper 会再次独立校验并自行计算依赖
 }
 ```
 
 默认使用 `pacman -Rns` 语义（同时清理不再需要的依赖）；但**清理范围必须展示在计划里**，
-不能像命令行那样隐式省略。
+不能像命令行那样隐式省略。因此计划项分三类（`PlanItemReason`）：
+
+| 摘要文案 | reason | 含义 |
+| --- | --- | --- |
+| `卸载 X` | `explicit` | 用户选中的目标包 |
+| `连带卸载 Y` | `dependency` | 用户确认级联删除的反向依赖 |
+| `清理多余依赖 Z` | `unneeded` | 删掉之后不再被任何已安装包需要的依赖 |
+
+"多余依赖"由 `PackageBackend::unneeded_dependencies(&removing)` 计算
+（pacman 后端实现为 `AlpmOp::Unneeded`，只读）：
+
+1. 从**完整删除集合**（目标 + 级联包）出发，只沿 `pkg.depends()`（运行时依赖）展开；
+   版本约束与虚拟 provides 都走 `find_satisfier`，不按名字字符串猜。
+2. 候选必须 `reason == Dependency`：**显式安装的包永远不自动删除**。
+3. 候选的 `required_by()` 必须全部落在删除集合内（`required_by` 已计入 provides）。
+4. 对命中的包继续展开（传递闭包），直到不动点；结果按包名排序。
+
+必须一次性传入完整删除集合：两个待删包**共同依赖**的包不是多余依赖。
+实机验证：`remove-cascade gst-plugins-good` → 41 项（1 显式 + 3 连带 + 37 多余依赖）。
+
+卸载计划的 `PlanSource::Official` 允许**空仓库名**：`pacman -Rns` 不按仓库解析，
+仓库名只是展示信息（级联删到的外来包在同步库里本就没有归属）；安装计划仍必须指明仓库。
+UI 侧的级联重试必须复用用户点击时的原始 `PackageId`，否则会丢掉仓库名。
 
 ---
 

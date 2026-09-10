@@ -246,15 +246,17 @@ pub async fn build_remove_plan(
         let backend = find_backend(backends, "pacman")?;
         let mut plan = TransactionPlan::new(PlanKind::PacmanRemove);
 
-        // 1) 反依赖检查
-        let mut all_dependents: Vec<String> = Vec::new();
+        // 1) 反依赖检查。注意保留 PackageId 而不只是包名：
+        //    后续生成计划项时要用它自己的仓库/来源（曾经只留名字，
+        //    计划里的仓库名就成了空串，级联删除必然校验失败）。
+        let mut all_dependents: Vec<PackageId> = Vec::new();
         for id in &pacman_targets {
             let dependents = backend.reverse_dependencies(id).await.unwrap_or_default();
             for d in dependents {
-                if !all_dependents.contains(&d.name)
+                if !all_dependents.iter().any(|p| p.name == d.name)
                     && !pacman_targets.iter().any(|t| t.name == d.name)
                 {
-                    all_dependents.push(d.name);
+                    all_dependents.push(d);
                 }
             }
         }
@@ -266,7 +268,7 @@ pub async fn build_remove_plan(
             return Err(CoreError::ReverseDeps {
                 target,
                 count: all_dependents.len(),
-                dependents: all_dependents,
+                dependents: all_dependents.iter().map(|d| d.name.clone()).collect(),
             });
         }
         outcome.risks.push(PlanRisk::ReverseDeps {
@@ -280,12 +282,38 @@ pub async fn build_remove_plan(
         }
         // 级联删除：pacman -Rns 语义，但清理范围必须展示在计划里
         if cascade {
-            for name in &all_dependents {
-                let mut item = PlanItem::official(String::new(), name.clone());
+            for dependent in &all_dependents {
+                let repo = dependent.source.repo_name().unwrap_or_default().to_string();
+                let mut item = PlanItem::official(repo, dependent.name.clone());
                 item.reason = PlanItemReason::Dependency;
                 plan.push(item);
             }
         }
+
+        // 2) "多余依赖"：目标包（以及用户确认级联删除的包）删掉之后，
+        //    不再被任何已安装包需要的依赖也要一并删除，而且必须**逐条列进计划**。
+        //    pacman -Rns 本来就会隐式清理它们，但隐式清理正是 §9.3 明令禁止的：
+        //    用户必须在执行前看到完整的清理范围。
+        //
+        //    计算必须一次性传入完整的删除集合：两个待删包共同依赖的包不是多余依赖。
+        let mut removing: Vec<PackageId> = pacman_targets.iter().map(|t| (*t).clone()).collect();
+        removing.extend(all_dependents.iter().cloned());
+        let unneeded = backend
+            .unneeded_dependencies(&removing)
+            .await
+            .unwrap_or_default();
+        for id in &unneeded {
+            if plan.items.iter().any(|i| i.name == id.name)
+                || removing.iter().any(|r| r.name == id.name)
+            {
+                continue;
+            }
+            let repo = id.source.repo_name().unwrap_or_default().to_string();
+            let item =
+                PlanItem::official(repo, id.name.clone()).with_reason(PlanItemReason::Unneeded);
+            plan.push(item);
+        }
+
         validate_or_reject(&plan)?;
         outcome.plans.push(plan);
     }
@@ -460,7 +488,177 @@ pub fn summarize_risks(outcome: &BuildOutcome) -> Vec<PlanRisk> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::{Capability, Page, SearchScope};
     use crate::model::{Installed, UpdateInfo};
+
+    /// 只实现卸载计划需要的三个方法的假后端（其余一律不可用）。
+    ///
+    /// 之所以要这个假后端：卸载计划的"清理多余依赖"是纯装配逻辑，
+    /// 用真实 libalpm 数据没法稳定复现"共同依赖/级联/外来包"这些边界。
+    struct RemoveMock {
+        rev: Vec<PackageId>,
+        unneeded: Vec<PackageId>,
+        /// 记录 unneeded_dependencies 收到的完整删除集合
+        seen: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl RemoveMock {
+        fn new(rev: Vec<PackageId>, unneeded: Vec<PackageId>) -> Self {
+            Self {
+                rev,
+                unneeded,
+                seen: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn seen(&self) -> Vec<String> {
+            self.seen.lock().expect("lock").clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl PackageBackend for RemoveMock {
+        fn source_kind(&self) -> &'static str {
+            "pacman"
+        }
+
+        fn capability(&self) -> &Capability {
+            // 能力对象需要返回值引用：用一份静态的可用能力
+            static CAP: std::sync::OnceLock<Capability> = std::sync::OnceLock::new();
+            CAP.get_or_init(Capability::available)
+        }
+
+        async fn search(
+            &self,
+            _query: &str,
+            _scope: SearchScope,
+        ) -> CoreResult<Vec<PackageSummary>> {
+            Ok(Vec::new())
+        }
+
+        async fn info(&self, id: &PackageId) -> CoreResult<crate::model::PackageDetail> {
+            Err(CoreError::NotFound(id.name.clone()))
+        }
+
+        async fn installed(&self) -> CoreResult<Vec<PackageSummary>> {
+            Ok(Vec::new())
+        }
+
+        async fn upgradable(&self) -> CoreResult<Vec<PackageSummary>> {
+            Ok(Vec::new())
+        }
+
+        async fn categories(&self) -> CoreResult<Vec<crate::backend::Category>> {
+            Ok(Vec::new())
+        }
+
+        async fn list_category(
+            &self,
+            _category: &str,
+            _page: Page,
+        ) -> CoreResult<Vec<PackageSummary>> {
+            Ok(Vec::new())
+        }
+
+        async fn dependencies(&self, _id: &PackageId) -> CoreResult<Vec<DependencyInfo>> {
+            Ok(Vec::new())
+        }
+
+        async fn reverse_dependencies(&self, _id: &PackageId) -> CoreResult<Vec<PackageId>> {
+            Ok(self.rev.clone())
+        }
+
+        async fn unneeded_dependencies(&self, targets: &[PackageId]) -> CoreResult<Vec<PackageId>> {
+            self.seen
+                .lock()
+                .expect("lock")
+                .extend(targets.iter().map(|t| t.name.clone()));
+            Ok(self.unneeded.clone())
+        }
+    }
+
+    fn backends(mock: RemoveMock) -> Vec<Arc<dyn PackageBackend>> {
+        vec![Arc::new(mock)]
+    }
+
+    #[tokio::test]
+    async fn remove_plan_lists_unneeded_dependencies_and_uses_full_removal_set() {
+        let mock = RemoveMock::new(
+            // 级联删除到的反向依赖是一个外来包（没有同步库归属 → 空仓库名）
+            vec![PackageId::aur("pygtk-demo")],
+            vec![PackageId::official("extra", "aalib")],
+        );
+        let outcome = build_remove_plan(
+            &backends(mock),
+            &[PackageId::official("extra", "gst-plugins-good")],
+            true,
+        )
+        .await
+        .expect("级联卸载计划必须能构建");
+
+        let plan = &outcome.plans[0];
+        assert_eq!(plan.kind, PlanKind::PacmanRemove);
+        // 目标 + 连带删除 + 多余依赖，一个都不能少
+        let names: Vec<&str> = plan.items.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(names, vec!["gst-plugins-good", "pygtk-demo", "aalib"]);
+
+        let reasons: Vec<PlanItemReason> = plan.items.iter().map(|i| i.reason).collect();
+        assert_eq!(
+            reasons,
+            vec![
+                PlanItemReason::Explicit,
+                PlanItemReason::Dependency,
+                PlanItemReason::Unneeded
+            ]
+        );
+        // 摘要必须把"多余依赖"与目标包区分开（§9.3 展示清理范围）
+        assert_eq!(plan.summary[0], "卸载 gst-plugins-good");
+        assert_eq!(plan.summary[1], "连带卸载 pygtk-demo");
+        assert_eq!(plan.summary[2], "清理多余依赖 aalib");
+        // 计划必须自校验通过：级联删除到的外来包允许空仓库名（旧实现会在这里失败）
+        plan.validate().expect("卸载计划必须有效");
+    }
+
+    #[tokio::test]
+    async fn unneeded_dependencies_receive_targets_plus_cascaded_dependents() {
+        // "两个待删包共同依赖一个依赖"这种场景只有在删除集完整时才判得对，
+        // 因此必须一次性把 目标包 + 级联依赖 一起传给后端。
+        let mock = Arc::new(RemoveMock::new(
+            vec![PackageId::official("extra", "app")],
+            Vec::new(),
+        ));
+        let backends: Vec<Arc<dyn PackageBackend>> = vec![mock.clone()];
+        build_remove_plan(&backends, &[PackageId::official("extra", "lib")], true)
+            .await
+            .expect("plan");
+        let mut seen = mock.seen();
+        seen.sort();
+        assert_eq!(seen, vec!["app".to_string(), "lib".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn remove_plan_without_cascade_reports_reverse_deps() {
+        let mock = RemoveMock::new(vec![PackageId::official("extra", "app")], Vec::new());
+        let err = build_remove_plan(
+            &backends(mock),
+            &[PackageId::official("extra", "lib")],
+            false,
+        )
+        .await
+        .expect_err("有反向依赖且未级联时必须报 ReverseDeps");
+        match err {
+            CoreError::ReverseDeps {
+                target,
+                count,
+                dependents,
+            } => {
+                assert_eq!(target, "lib");
+                assert_eq!(count, 1);
+                assert_eq!(dependents, vec!["app".to_string()]);
+            }
+            other => panic!("期望 ReverseDeps，实际 {other:?}"),
+        }
+    }
 
     fn summary(name: &str, source: PackageSource, update: bool) -> PackageSummary {
         let mut s = PackageSummary::minimal(

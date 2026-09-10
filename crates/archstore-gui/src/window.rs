@@ -570,6 +570,9 @@ fn apply_services(main: &Rc<MainWindow>, services: std::sync::Arc<Services>) {
 }
 
 /// 读取已安装列表（本地、毫秒级）。
+///
+/// **两个来源都要在**：官方仓库（pacman 本地库）与 Flatpak 应用。
+/// 旧实现只查 pacman，于是"我的"里完全看不到 Flatpak 应用（用户实测反馈）。
 fn load_installed(main: &Rc<MainWindow>) {
     let Some(services) = main.services.borrow().clone() else {
         return;
@@ -579,18 +582,38 @@ fn load_installed(main: &Rc<MainWindow>) {
     let services_for_task = std::sync::Arc::clone(&services);
     runtime::spawn_ui(
         async move {
-            match services_for_task.pacman.as_ref() {
-                Some(p) => p.installed().await,
-                None => Err(archstore_core::CoreError::BackendUnavailable {
-                    kind: "pacman".into(),
-                    reason: "官方仓库后端未启用".into(),
-                }),
+            let pacman_items = match services_for_task.pacman.as_ref() {
+                Some(p) => p.installed().await?,
+                None => {
+                    return Err(archstore_core::CoreError::BackendUnavailable {
+                        kind: "pacman".into(),
+                        reason: "官方仓库后端未启用".into(),
+                    });
+                }
+            };
+            // Flatpak 是独立来源：读失败只降级为"这一部分没有"，
+            // 不能因为 flatpak 命令不可用就把整个"已安装"页变成错误页（失败可用原则）。
+            let mut flatpak_items: Vec<PackageSummary> = Vec::new();
+            if services_for_task.config.sources.flatpak_enabled
+                && let Some(f) = services_for_task.flatpak.as_ref()
+            {
+                match f.installed().await {
+                    Ok(items) => flatpak_items = items,
+                    Err(e) => tracing::warn!(error = %e, "读取已安装 Flatpak 应用失败"),
+                }
             }
+            Ok::<_, archstore_core::CoreError>((pacman_items, flatpak_items))
         },
         move |result| match result {
-            Ok(items) => {
-                services.installed.replace(&items);
-                main_ref.installed.set_items(&items);
+            Ok((pacman_items, flatpak_items)) => {
+                // 已安装快照只收 pacman 侧：它是 AUR 后端判断"是否已安装"的依据，
+                // 而 Flatpak 应用 ID 与包名不是同一命名空间，混进去只会污染查询结果。
+                services.installed.replace(&pacman_items);
+                let all = crate::pages::installed::merge_installed_sources(vec![
+                    pacman_items,
+                    flatpak_items,
+                ]);
+                main_ref.installed.set_items(&all);
             }
             Err(e) => main_ref.installed.page.shell.show_error(&e),
         },
@@ -877,6 +900,24 @@ fn render_detail(main: &Rc<MainWindow>, detail: archstore_core::model::PackageDe
         }) as Box<dyn Fn(crate::widgets::dep_list::DepSelection)>,
     );
 
+    // 单击演示图片：用详情页里已经下载好的本地文件打开查看器。
+    // 回调里现取 view（而不是构造期捕获），因为截图是异步下载完成后回填的。
+    let main_shot = main.clone();
+    let on_screenshot = Some(std::rc::Rc::new(move |index: usize| {
+        let Some(view) = main_shot.detail.view() else {
+            return;
+        };
+        let count = view.screenshot_count();
+        let files: Vec<Option<std::path::PathBuf>> =
+            (0..count).map(|i| view.screenshot_file(i)).collect();
+        crate::widgets::image_viewer::show(
+            &main_shot.window,
+            view.screenshot_urls(),
+            &files,
+            index,
+        );
+    }) as std::rc::Rc<dyn Fn(usize)>);
+
     let _ = has_update;
     main.detail.set_detail(
         &detail,
@@ -886,6 +927,7 @@ fn render_detail(main: &Rc<MainWindow>, detail: archstore_core::model::PackageDe
             on_remove: remove,
             on_homepage,
             on_deps_changed,
+            on_screenshot,
         },
     );
 
@@ -998,19 +1040,22 @@ pub fn plan_remove(main: &Rc<MainWindow>, id: PackageId, cascade: bool) {
     };
     let backends = services.backends();
     let main_ref = main.clone();
+    let build_id = id.clone();
     runtime::spawn_ui(
-        async move { archstore_core::plan::build_remove_plan(&backends, &[id], cascade).await },
+        async move { archstore_core::plan::build_remove_plan(&backends, &[build_id], cascade).await },
         move |result| match result {
             Ok(outcome) => enqueue_outcome(&main_ref, outcome),
             Err(archstore_core::CoreError::ReverseDeps {
                 target, dependents, ..
             }) => {
-                // 默认把"同时删除这些包"设为否（§5.4 规则 6）
+                // 默认把"同时删除这些包"设为否（§5.4 规则 6）。
+                // 重试时必须复用**原始的 PackageId**（带真实仓库名），
+                // 旧实现重新拼一个空仓库名的 id，导致级联删除永远过不了计划校验。
                 let m = main_ref.clone();
-                let target_id = PackageId::official(String::new(), target.clone());
+                let retry_id = id.clone();
                 plan_bar::ask_cascade(&main_ref.window, &target, &dependents, move |cascade| {
                     if cascade {
-                        plan_remove(&m, target_id.clone(), true);
+                        plan_remove(&m, retry_id.clone(), true);
                     }
                 });
             }

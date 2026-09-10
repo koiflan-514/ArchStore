@@ -60,6 +60,11 @@ pub enum AlpmOp {
     RevDeps {
         name: String,
     },
+    /// 删除 `removing` 里的这些包之后，不再被任何已安装包需要的依赖
+    /// （`pacman -Rns` 的清理范围，project.md §9.3）。
+    Unneeded {
+        removing: Vec<String>,
+    },
     Groups,
     GroupMembers {
         /// 形如 "extra:gnome" 的分类 id
@@ -83,6 +88,8 @@ pub enum AlpmPayload {
     Detail(Box<PackageDetail>),
     Deps(Vec<DependencyInfo>),
     RevDeps(Vec<PackageId>),
+    /// 卸载后不再被需要的依赖（`pacman -Rns` 的清理范围）。
+    Unneeded(Vec<PackageId>),
     Groups(Vec<Category>),
     Repos(Vec<RepoStatus>),
     Unit,
@@ -515,6 +522,7 @@ fn needs_local_index(op: &AlpmOp) -> bool {
             | AlpmOp::Info { .. }
             | AlpmOp::Deps { .. }
             | AlpmOp::RevDeps { .. }
+            | AlpmOp::Unneeded { .. }
     )
 }
 
@@ -540,6 +548,9 @@ fn handle_op(state: &mut State, op: AlpmOp) -> CoreResult<AlpmPayload> {
         AlpmOp::Info { name } => Ok(AlpmPayload::Detail(Box::new(detail(state, &name)?))),
         AlpmOp::Deps { name } => Ok(AlpmPayload::Deps(dependencies(state, &name)?)),
         AlpmOp::RevDeps { name } => Ok(AlpmPayload::RevDeps(reverse_dependencies(state, &name)?)),
+        AlpmOp::Unneeded { removing } => Ok(AlpmPayload::Unneeded(unneeded_after_remove(
+            state, &removing,
+        ))),
         AlpmOp::Groups => Ok(AlpmPayload::Groups(groups(state))),
         AlpmOp::GroupMembers { group } => Ok(AlpmPayload::Summaries(group_members(state, &group))),
     }
@@ -880,6 +891,57 @@ fn reverse_dependencies(state: &State, name: &str) -> CoreResult<Vec<PackageId>>
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
+}
+
+/// 删除集执行之后"不再被需要"的依赖闭包 —— 也就是 `pacman -Rns` 会顺手清掉的那些包。
+///
+/// 判定与 pacman 的 `-s` 语义一致：
+/// 1. 只看删除集里每个包的**运行时依赖**（`pkg.depends()`）；
+///    版本约束与虚拟 provides 都用 `find_satisfier` 解析，绝不按名字字符串猜。
+/// 2. 该依赖必须是"作为依赖装进来的"（`PackageReason::Depend`）——
+///    用户显式安装的包永远不自动删（这是 pacman -Qdt 与 -Qdtt 的区别）。
+/// 3. 它不能再被删除集之外的任何已安装包需要（`required_by` 已计入 provides）。
+///
+/// 结果是一个**传递闭包**：删掉 A 之后不再需要的 B，其自身依赖的 C 也可能随之失去意义，
+/// 因此这里用队列迭代到不动点，而不是只看目标包的直接依赖。
+///
+/// 只读、无副作用。helper 执行时会自己再算一遍（§4.3 的双重校验），
+/// 这里的输出只用于**把清理范围写进计划让用户看见**（§9.3 禁止命令行式隐式清理）。
+fn unneeded_after_remove(state: &State, removing: &[String]) -> Vec<PackageId> {
+    let local = state.handle.localdb();
+    let mut gone: std::collections::HashSet<&str> = removing.iter().map(|s| s.as_str()).collect();
+    let mut queue: Vec<String> = removing.to_vec();
+    let mut out: Vec<PackageId> = Vec::new();
+
+    while let Some(name) = queue.pop() {
+        let Ok(pkg) = local.pkg(name.as_str()) else {
+            // 计划里可能存在尚未安装的名字（理论上不会走到这里）：跳过而不是报错
+            continue;
+        };
+        for dep in pkg.depends().iter() {
+            let Some(candidate) = local.pkgs().find_satisfier(dep.to_string()) else {
+                continue; // 依赖未安装（或由同步库提供）：不是本次卸载的清理对象
+            };
+            let candidate_name = candidate.name();
+            if gone.contains(candidate_name) {
+                continue; // 已经要删了
+            }
+            if !matches!(candidate.reason(), PackageReason::Depend) {
+                continue; // 显式安装：绝不自动删除
+            }
+            let still_needed = candidate.required_by().iter().any(|d| !gone.contains(d));
+            if still_needed {
+                continue;
+            }
+            gone.insert(candidate_name);
+            queue.push(candidate_name.to_string());
+            out.push(installed_id(state, candidate_name));
+        }
+    }
+
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out.dedup_by(|a, b| a.name == b.name);
+    out
 }
 
 /// 把 Unix 时间戳格式化为 YYYY-MM-DD HH:MM（本地时区偏移不参与，仅用于展示）。

@@ -8,7 +8,7 @@ use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
 
-use archstore_core::model::plan::{PlanKind, TransactionPlan};
+use archstore_core::model::plan::{PlanItem, PlanKind, TransactionPlan};
 use archstore_core::plan::AurRequest;
 
 use crate::state::{TxState, plan_bar_text};
@@ -240,6 +240,19 @@ pub fn ask_cascade(
     dialog.present(Some(parent));
 }
 
+/// 计划详情对话框里一行条目的文案（纯函数，便于测试）。
+///
+/// 卸载/清理类条目没有"目标版本"可言，硬写"最新版本"会误导用户；
+/// 安装类条目缺版本时才是"最新版本"。
+pub fn plan_item_line(plan: &TransactionPlan, item: &PlanItem) -> String {
+    let version = match (&item.target_version, plan.kind.is_remove()) {
+        (Some(v), _) => format!("，{v}"),
+        (None, true) => String::new(),
+        (None, false) => format!("，{}", ui::t("最新版本")),
+    };
+    format!("  · {}（{}{version}）", item.name, item.reason.label())
+}
+
 /// 计划详情对话框（只读展示，不执行任何操作）。
 pub fn show_plan_details(
     parent: &impl IsA<gtk::Widget>,
@@ -256,12 +269,7 @@ pub fn show_plan_details(
                 .build(),
         );
         for item in &plan.items {
-            body.append(&ui::ellipsized(&format!(
-                "  · {}（{}，{}）",
-                item.name,
-                item.reason.label(),
-                item.target_version.as_deref().unwrap_or("最新版本")
-            )));
+            body.append(&ui::ellipsized(&plan_item_line(plan, item)));
         }
     }
     for req in aur {
@@ -445,7 +453,41 @@ pub fn spawn_helper(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use archstore_core::model::plan::PlanItem;
+    use archstore_core::model::plan::{PlanItem, PlanItemReason};
+
+    #[test]
+    fn plan_item_lines_distinguish_versions_per_plan_kind() {
+        // 安装计划缺版本 → "最新版本"；有版本 → 显示版本
+        let mut sync = TransactionPlan::new(PlanKind::PacmanSync);
+        sync.push(PlanItem::official("extra", "firefox"));
+        sync.push(PlanItem::official("extra", "vim").with_version("9.1"));
+        assert_eq!(
+            plan_item_line(&sync, &sync.items[0]),
+            "  · firefox（显式，最新版本）"
+        );
+        assert_eq!(
+            plan_item_line(&sync, &sync.items[1]),
+            "  · vim（显式，9.1）"
+        );
+
+        // 卸载计划：目标 / 连带 / 多余依赖要能区分，且不写"最新版本"
+        let mut remove = TransactionPlan::new(PlanKind::PacmanRemove);
+        remove.push(PlanItem::official("extra", "gst-plugins-good"));
+        remove.push(PlanItem::official("extra", "orca").with_reason(PlanItemReason::Dependency));
+        remove.push(PlanItem::official("extra", "aalib").with_reason(PlanItemReason::Unneeded));
+        assert_eq!(
+            plan_item_line(&remove, &remove.items[0]),
+            "  · gst-plugins-good（显式）"
+        );
+        assert_eq!(
+            plan_item_line(&remove, &remove.items[1]),
+            "  · orca（依赖）"
+        );
+        assert_eq!(
+            plan_item_line(&remove, &remove.items[2]),
+            "  · aalib（多余依赖）"
+        );
+    }
 
     #[test]
     fn prepare_plan_file_writes_private_file() {

@@ -236,6 +236,19 @@ impl PackageBackend for PacmanBackend {
             )),
         }
     }
+
+    async fn unneeded_dependencies(
+        &self,
+        targets: &[PackageId],
+    ) -> Result<Vec<PackageId>, CoreError> {
+        let removing: Vec<String> = targets.iter().map(|t| t.name.clone()).collect();
+        match self.worker.request(AlpmOp::Unneeded { removing }).await? {
+            AlpmPayload::Unneeded(v) => Ok(v),
+            _ => Err(CoreError::Internal(
+                "unneeded_dependencies 返回了意外载荷".into(),
+            )),
+        }
+    }
 }
 
 #[cfg(test)]

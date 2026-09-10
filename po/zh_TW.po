@@ -3,17 +3,17 @@ msgid ""
 msgstr ""
 "Project-Id-Version: archstore 0.1.0\n"
 "Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-10 22:58+0800\n"
 "PO-Revision-Date: 2026-09-10 00:00+0000\n"
 "Last-Translator: ArchStore Contributors\n"
 "Language-Team: Chinese (Traditional)\n"
-"POT-Creation-Date: 2026-09-10 19:43+0800\n"
 "Language: zh_TW\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: crates/archstore-core/src/i18n.rs:146 crates/archstore-gui/src/ui.rs:323
+#: crates/archstore-core/src/i18n.rs:146 crates/archstore-gui/src/ui.rs:328
 msgid "Install"
 msgstr "安裝"
 
@@ -29,158 +29,177 @@ msgstr ""
 msgid "系统库版本过低，无法启动 ArchStore"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:178
+#: crates/archstore-gui/src/smoke.rs:1094
+#: crates/archstore-gui/src/widgets/image_viewer.rs:46
+msgid "查看演示图片"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:186
 msgid "搜索软件…"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:211
+#: crates/archstore-gui/src/window.rs:218
 #: crates/archstore-gui/src/pages/detail.rs:49
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:338
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:356
 msgid "详情"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:230
+#: crates/archstore-gui/src/window.rs:240
 msgid "首页"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:234
-#: crates/archstore-gui/src/window.rs:294
+#: crates/archstore-gui/src/window.rs:241
+#: crates/archstore-gui/src/window.rs:292
 msgid "分类"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:241
+#: crates/archstore-gui/src/window.rs:244
 #: crates/archstore-gui/src/widgets/dep_list.rs:268
 msgid "已安装"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:246
-#: crates/archstore-gui/src/pages/installed.rs:30
+#: crates/archstore-gui/src/window.rs:245
+#: crates/archstore-gui/src/pages/installed.rs:31
 msgid "可更新"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:248
+#: crates/archstore-gui/src/window.rs:246
 #: crates/archstore-gui/src/pages/settings.rs:711
 msgid "设置"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:250
+#: crates/archstore-gui/src/window.rs:248
 msgid "搜索"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:283
+#: crates/archstore-gui/src/window.rs:281
 msgid "软件来源"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:345
+#: crates/archstore-gui/src/window.rs:344
 msgid "导航"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:372
+#: crates/archstore-gui/src/window.rs:371
 msgid "刷新（F5）"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:375
-#: crates/archstore-gui/src/window.rs:601
+#: crates/archstore-gui/src/window.rs:378
+msgid "显示 / 隐藏侧栏"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:385
+msgid "显示 / 隐藏底栏（计划与进度）"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:389
+#: crates/archstore-gui/src/window.rs:664
 #: crates/archstore-gui/src/pages/settings.rs:263
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:172
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:174
 msgid "更新"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:379
+#: crates/archstore-gui/src/window.rs:393
 msgid "设置（Ctrl+,）"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:463
+#: crates/archstore-gui/src/window.rs:403
+#: crates/archstore-gui/src/pages/settings.rs:714
+#: crates/archstore-gui/src/widgets/plan_bar.rs:89
+msgid "知道了"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:503
 msgid "上次事务可能未完成"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:466
+#: crates/archstore-gui/src/window.rs:506
 msgid "请运行 checkupdates / pacman -Qkk 检查系统状态"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:652
+#: crates/archstore-gui/src/window.rs:711
 msgid "来自 Flathub 趋势"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:904
+#: crates/archstore-gui/src/window.rs:996
 msgid "已加入计划"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:904
+#: crates/archstore-gui/src/window.rs:996
 msgid "需要确认后才会执行"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:916
-#: crates/archstore-gui/src/window.rs:1384
+#: crates/archstore-gui/src/window.rs:1008
+#: crates/archstore-gui/src/window.rs:1487
 msgid "提权不可用"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:934
+#: crates/archstore-gui/src/window.rs:1026
 msgid "正在构建计划…"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1030
+#: crates/archstore-gui/src/window.rs:1125
 msgid "缓存已按新上限裁剪"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1070
-#: crates/archstore-gui/src/window.rs:1833
+#: crates/archstore-gui/src/window.rs:1165
+#: crates/archstore-gui/src/window.rs:2103
 msgid "连接成功"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1090
+#: crates/archstore-gui/src/window.rs:1185
 #: crates/archstore-gui/src/pages/settings.rs:215
 msgid "清除缓存"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1093
+#: crates/archstore-gui/src/window.rs:1188
 msgid "将删除全部缓存数据（元数据与图标）。"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1097
-#: crates/archstore-gui/src/widgets/plan_bar.rs:227
+#: crates/archstore-gui/src/window.rs:1192
+#: crates/archstore-gui/src/widgets/plan_bar.rs:230
 msgid "取消"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1098
+#: crates/archstore-gui/src/window.rs:1193
 msgid "清除"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1118
-#: crates/archstore-gui/src/window.rs:1858
+#: crates/archstore-gui/src/window.rs:1213
+#: crates/archstore-gui/src/window.rs:2128
 msgid "缓存已清空"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1185
+#: crates/archstore-gui/src/window.rs:1280
 #: crates/archstore-gui/src/pages/settings.rs:278
 msgid "运行环境自检"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1191
-#: crates/archstore-gui/src/widgets/plan_bar.rs:284
+#: crates/archstore-gui/src/window.rs:1286
+#: crates/archstore-gui/src/widgets/plan_bar.rs:295
 msgid "关闭"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1206
-#: crates/archstore-gui/src/window.rs:1873
+#: crates/archstore-gui/src/window.rs:1301
+#: crates/archstore-gui/src/window.rs:2143
 msgid "已重新检测"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1301
-msgid "已刷新"
-msgstr ""
-
-#: crates/archstore-gui/src/window.rs:1401
+#: crates/archstore-gui/src/window.rs:1504
 msgid "无法写入计划文件"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1515
+#: crates/archstore-gui/src/window.rs:1618
 msgid "需要 paru 或 yay 才能执行 AUR 操作；查询功能不受影响。"
 msgstr ""
 
-#: crates/archstore-gui/src/window.rs:1593
+#: crates/archstore-gui/src/window.rs:1696
 #: crates/archstore-gui/src/widgets/progress_panel.rs:137
 msgid "事务失败"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1745
+msgid "已刷新"
 msgstr ""
 
 #: crates/archstore-gui/src/pages/settings.rs:88
@@ -406,10 +425,6 @@ msgstr ""
 msgid "缓存与日志"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/settings.rs:714
-msgid "知道了"
-msgstr ""
-
 #: crates/archstore-gui/src/pages/detail.rs:34
 msgid "选择左侧的软件查看详情"
 msgstr ""
@@ -427,7 +442,7 @@ msgid "部分详情不可用"
 msgstr ""
 
 #: crates/archstore-gui/src/pages/updates.rs:41
-#: crates/archstore-gui/src/pages/installed.rs:27
+#: crates/archstore-gui/src/pages/installed.rs:28
 msgid "全部"
 msgstr ""
 
@@ -455,104 +470,140 @@ msgstr ""
 msgid "没有可用的更新。"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/updates.rs:194
+#: crates/archstore-gui/src/pages/updates.rs:175
+msgid "该分组下没有更新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:178
+msgid "当前分组"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:181
+msgid "切回「全部」可以看到其它来源的更新。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:207
 msgid "安全公告：不可用（将自动重试）"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/updates.rs:198
-#: crates/archstore-gui/src/pages/updates.rs:215
+#: crates/archstore-gui/src/pages/updates.rs:211
+#: crates/archstore-gui/src/pages/updates.rs:228
 msgid "安全公告"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/updates.rs:199
+#: crates/archstore-gui/src/pages/updates.rs:212
 msgid "没有匹配到受影响的安全问题"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/updates.rs:205
+#: crates/archstore-gui/src/pages/updates.rs:218
 msgid "安全更新"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:55
+#: crates/archstore-gui/src/pages/search.rs:60
 msgid "本地"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:62
+#: crates/archstore-gui/src/pages/search.rs:74
 msgid "搜索来源："
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:68
+#: crates/archstore-gui/src/pages/search.rs:78
 msgid "勾选 AUR / Flatpak 会在输入后联网请求；取消勾选则只查本地数据。"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:133
-msgid "输入关键字开始搜索"
-msgstr ""
-
-#: crates/archstore-gui/src/pages/search.rs:134
-msgid "默认只搜本地；勾选 AUR / Flatpak 会联网查询。"
-msgstr ""
-
-#: crates/archstore-gui/src/pages/search.rs:201
+#: crates/archstore-gui/src/pages/search.rs:188
 msgid "搜索失败"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:208
+#: crates/archstore-gui/src/pages/search.rs:202
 msgid "没有找到与"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:208
+#: crates/archstore-gui/src/pages/search.rs:202
 msgid "匹配的软件"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/search.rs:209
+#: crates/archstore-gui/src/pages/search.rs:203
 msgid "可以尝试勾选 AUR / Flatpak 来源，或检查拼写。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:219
+msgid "输入关键字开始搜索"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:220
+msgid "默认只搜本地；勾选 AUR / Flatpak 会联网查询。"
 msgstr ""
 
 #: crates/archstore-gui/src/pages/mod.rs:61
 msgid "正在加载…"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/category.rs:56
+#: crates/archstore-gui/src/pages/category.rs:62
 msgid "加载更多"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/category.rs:177
-#: crates/archstore-gui/src/pages/category.rs:191
+#: crates/archstore-gui/src/pages/category.rs:199
+msgid "请从左侧选择一个分类"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/category.rs:200
+msgid "左侧列出的是当前来源的分类；点一个分类即可查看其中的软件。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/category.rs:258
+#: crates/archstore-gui/src/pages/category.rs:272
 msgid "该分类暂无软件"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/category.rs:178
-#: crates/archstore-gui/src/pages/category.rs:192
+#: crates/archstore-gui/src/pages/category.rs:259
+#: crates/archstore-gui/src/pages/category.rs:273
 msgid "换一个分类，或确认同步数据库是最新的。"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:28
+#: crates/archstore-gui/src/pages/installed.rs:29
 msgid "显式安装"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:29
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:328
+#: crates/archstore-gui/src/pages/installed.rs:30
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:346
 msgid "依赖"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:31
+#: crates/archstore-gui/src/pages/installed.rs:32
 msgid "外来包（可能来自 AUR）"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:69
+#: crates/archstore-gui/src/pages/installed.rs:33
+msgid "Flatpak 应用"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:97
 msgid "在已安装的软件中筛选（不联网）"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:139
+#: crates/archstore-gui/src/pages/installed.rs:170
 msgid "显示"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:147
+#: crates/archstore-gui/src/pages/installed.rs:179
 msgid "列表为空"
 msgstr ""
 
-#: crates/archstore-gui/src/pages/installed.rs:148
+#: crates/archstore-gui/src/pages/installed.rs:180
 msgid "若系统已有软件包却显示为空，说明无法读取本地数据库，请运行诊断。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:186
+msgid "没有匹配的软件"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:189
+msgid "筛选后没有匹配项"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:192
+msgid "换个关键字，或把筛选切回「全部」。"
 msgstr ""
 
 #: crates/archstore-gui/src/pages/home.rs:28
@@ -621,53 +672,61 @@ msgstr ""
 msgid "将安装"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:62
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:64
 msgid "仅翻译了前一部分"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:69
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:265
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:302
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:71
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:283
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:320
 msgid "显示原文"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:151
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:153
 msgid "维护者"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:159
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:161
 msgid "主页"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:169
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:171
 msgid "安装"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:174
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:176
 msgid "重新安装"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:186
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:188
 msgid "卸载"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:209
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:211
 msgid "操作前会先显示计划清单，确认后才执行。"
 msgstr ""
 
 #: crates/archstore-gui/src/widgets/package_detail_view.rs:254
+msgid "单击查看大图"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:255
+msgid "也可以在查看器里用 ← → 切换、Esc 关闭"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:272
 msgid "描述"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:294
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:312
 msgid "显示译文"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:312
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:330
 msgid "权限"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/package_detail_view.rs:365
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:383
 msgid "版本信息不可用"
 msgstr ""
 
@@ -683,57 +742,61 @@ msgstr ""
 msgid "放弃计划"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:125
+#: crates/archstore-gui/src/widgets/plan_bar.rs:128
 msgid "事务正在执行…"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:132
+#: crates/archstore-gui/src/widgets/plan_bar.rs:135
 msgid "上次事务已完成"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:142
+#: crates/archstore-gui/src/widgets/plan_bar.rs:145
 msgid "上次事务失败"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:160
+#: crates/archstore-gui/src/widgets/plan_bar.rs:163
 msgid ""
 "同时更新官方仓库与 AUR 包可能导致部分升级（partial upgrade），建议分开执行。"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:165
+#: crates/archstore-gui/src/widgets/plan_bar.rs:168
 msgid "AUR 构建需要在终端中以用户身份完成，点击执行后会打开终端。"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:215
+#: crates/archstore-gui/src/widgets/plan_bar.rs:218
 msgid "以及其它若干项"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:220
+#: crates/archstore-gui/src/widgets/plan_bar.rs:223
 #, rust-format
 msgid "删除 {package} 会影响 {count} 个已安装包。"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:224
+#: crates/archstore-gui/src/widgets/plan_bar.rs:227
 msgid "删除会影响其它软件"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:228
+#: crates/archstore-gui/src/widgets/plan_bar.rs:231
 msgid "同时删除这些包"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:277
+#: crates/archstore-gui/src/widgets/plan_bar.rs:251
+msgid "最新版本"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:288
 msgid "计划为空"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:281
+#: crates/archstore-gui/src/widgets/plan_bar.rs:292
 msgid "计划详情"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:326
+#: crates/archstore-gui/src/widgets/plan_bar.rs:337
 msgid "已在终端中启动 AUR 操作"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/plan_bar.rs:334
+#: crates/archstore-gui/src/widgets/plan_bar.rs:345
 msgid "无法打开终端，命令已复制到剪贴板"
 msgstr ""
 
@@ -780,58 +843,78 @@ msgstr ""
 msgid "结果"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:210
+#: crates/archstore-gui/src/widgets/progress_panel.rs:227
 msgid "解析依赖"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:211
+#: crates/archstore-gui/src/widgets/progress_panel.rs:228
 msgid "检查密钥环"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:212
+#: crates/archstore-gui/src/widgets/progress_panel.rs:229
 msgid "下载中"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:213
+#: crates/archstore-gui/src/widgets/progress_panel.rs:230
 msgid "校验软件包"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:214
+#: crates/archstore-gui/src/widgets/progress_panel.rs:231
 msgid "检查文件冲突"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:215
+#: crates/archstore-gui/src/widgets/progress_panel.rs:232
 msgid "安装中"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:216
+#: crates/archstore-gui/src/widgets/progress_panel.rs:233
 msgid "更新中"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:217
+#: crates/archstore-gui/src/widgets/progress_panel.rs:234
 msgid "卸载中"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:218
+#: crates/archstore-gui/src/widgets/progress_panel.rs:235
 msgid "处理中"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:230
+#: crates/archstore-gui/src/widgets/progress_panel.rs:247
 msgid "事务正在进行"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:232
+#: crates/archstore-gui/src/widgets/progress_panel.rs:249
 msgid ""
 "关闭窗口会保留后台执行。杀掉 pacman 比让它跑完更危险，因此本程序不会中止事"
 "务。"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:235
+#: crates/archstore-gui/src/widgets/progress_panel.rs:252
 msgid "等待完成"
 msgstr ""
 
-#: crates/archstore-gui/src/widgets/progress_panel.rs:236
+#: crates/archstore-gui/src/widgets/progress_panel.rs:253
 msgid "最小化到后台"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/image_viewer.rs:58
+msgid "上一张（←）"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/image_viewer.rs:60
+msgid "下一张（→）"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/image_viewer.rs:77
+msgid "图片尚未下载完成"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/image_viewer.rs:78
+msgid "回到详情页稍候，图片下载完成后即可查看。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/image_viewer.rs:122
+msgid "演示图片"
 msgstr ""
 
 #~ msgid "Remove"

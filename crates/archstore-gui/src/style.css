@@ -139,6 +139,30 @@ button.source-toggle:checked {
   background-color: alpha(@borders, 0.35);
 }
 
+/* 单击查看大图：可点击的截图（只加 hover/焦点反馈，不改变缩略图本身的外观） */
+.screenshot-button {
+  padding: 0;
+  border-radius: 8px;
+  min-width: 0;
+  min-height: 0;
+}
+.screenshot-button:hover .screenshot {
+  background-color: alpha(@accent_bg_color, 0.25);
+}
+.screenshot-button:focus-visible {
+  outline: 2px solid @accent_bg_color;
+  outline-offset: 2px;
+}
+
+/* 大图查看器：深色底更容易看清截图 */
+.screenshot-viewer,
+.screenshot-viewer > * {
+  background-color: alpha(black, 0.92);
+}
+.screenshot-full {
+  padding: 12px;
+}
+
 /* 详情页键值对 */
 .detail-key {
   opacity: 0.7;
