@@ -1,0 +1,20 @@
+[package]
+name = "archstore-helper"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "ArchStore 提权执行器：唯一以 root 运行、无 GUI 依赖的进程"
+
+[[bin]]
+name = "archstore-helper"
+path = "src/main.rs"
+
+[dependencies]
+archstore-core = { workspace = true }
+alpm        = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+libc        = { workspace = true }

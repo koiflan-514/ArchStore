@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.archstore.ArchStore</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>ArchStore</name>
+  <summary>Arch Linux software store for pacman, AUR and Flatpak</summary>
+  <summary xml:lang="zh_CN">统一管理官方仓库、AUR 与 Flatpak 的 Arch Linux 软件商店</summary>
+  <description>
+    <p>
+      ArchStore provides a graphical software store for Arch Linux, managing three sources
+      in one place: official repositories (pacman/libalpm), the AUR, and Flatpak.
+    </p>
+    <p xml:lang="zh_CN">
+      ArchStore 为 Arch Linux 提供图形化软件商店，统一管理三类软件源：官方仓库（pacman/libalpm）、
+      AUR 与 Flatpak。它坚持 Arch 的透明可控哲学：任何系统变更都必须先显示计划清单，
+      经用户显式确认后才由独立的 root 进程（archstore-helper）执行。
+    </p>
+    <p>Main features:</p>
+    <ul>
+      <li>Search and browse official repositories, the AUR and Flathub</li>
+      <li>Review every transaction as a declarative plan before it runs</li>
+      <li>Never runs GTK as root — all privileged work goes through pkexec and a helper binary</li>
+      <li>Offline-first: cached metadata keeps the app usable without a network</li>
+      <li>Works without paru/yay or flatpak installed; unavailable sources are greyed out with a reason</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.archstore.ArchStore.desktop</launchable>
+  <url type="homepage">https://github.com/koiflan-514/ArchStore</url>
+  <url type="bugtracker">https://github.com/koiflan-514/ArchStore/issues</url>
+  <developer id="io.github.archstore">
+    <name>ArchStore Contributors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-10">
+      <description>
+        <p>ArchStore 首个版本：pacman / AUR / Flatpak 只读查询、事务计划与提权执行、中文界面。</p>
+      </description>
+    </release>
+  </releases>
+  <requires>
+    <display_length compare="ge">600</display_length>
+  </requires>
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <provides>
+    <binary>archstore</binary>
+  </provides>
+</component>

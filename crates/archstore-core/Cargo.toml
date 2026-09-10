@@ -1,0 +1,24 @@
+[package]
+name = "archstore-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "ArchStore 业务核心：无 GTK 依赖的模型、后端、缓存、配置与事务计划"
+
+[dependencies]
+alpm        = { workspace = true }
+tokio       = { workspace = true }
+reqwest     = { workspace = true }
+raur        = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+toml        = { workspace = true }
+async-trait = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+gettext-rs  = { workspace = true }
+quick-xml   = { version = "0.38", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"

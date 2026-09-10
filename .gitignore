@@ -1,0 +1,5 @@
+/target
+*.tmp
+/po/*.mo
+/po/*.po~
+/po/*/LC_MESSAGES/

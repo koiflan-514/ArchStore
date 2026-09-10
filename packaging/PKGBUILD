@@ -1,0 +1,59 @@
+# Maintainer: koiflan-514 <191366721+koiflan-514@users.noreply.github.com>
+# 构建：cargo build --release + install（不使用 Meson，见 §2.1）
+pkgname=archstore
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Arch Linux 图形化软件商店：统一管理 pacman 仓库、AUR 与 Flatpak"
+arch=('x86_64' 'aarch64')
+url="https://github.com/koiflan-514/ArchStore"
+license=('GPL-3.0-or-later')
+depends=(
+  'gtk4>=4.18'
+  'libadwaita>=1.8'
+  'pacman'
+  'polkit'
+  'gettext'
+)
+# flatpak 与 AUR 助手都是可选的：未安装时对应功能置灰（§1.4 失败可用原则）
+optdepends=(
+  'flatpak: Flatpak 软件源支持'
+  'paru: AUR 安装与更新'
+  'yay: AUR 安装与更新'
+  # 官方仓库软件的真实图标来源；未安装时界面显示字母头像
+  'archlinux-appstream-data: 官方仓库软件的真实图标与截图'
+)
+makedepends=('cargo' 'rust>=1.92' 'git')
+provides=('archstore')
+conflicts=('archstore-git')
+# GitHub 的源码包根目录带仓库名的大小写：ArchStore-0.1.0/
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "ArchStore-$pkgver"
+  export CARGO_HOME="$srcdir/cargo-home"
+}
+
+build() {
+  cd "ArchStore-$pkgver"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo build --release --workspace --locked
+}
+
+check() {
+  cd "ArchStore-$pkgver"
+  export CARGO_HOME="$srcdir/cargo-home"
+  cargo test --workspace --locked
+  # 依赖方向约束：archstore-core 不得依赖 gtk4
+  if cargo tree -p archstore-core | grep -qE '(^|[^a-z-])gtk4 '; then
+    echo "archstore-core 不得依赖 gtk4" >&2
+    return 1
+  fi
+  for po in po/*.po; do msgfmt --check -o /dev/null "$po"; done
+}
+
+package() {
+  cd "ArchStore-$pkgver"
+  make DESTDIR="$pkgdir" PREFIX=/usr install
+}

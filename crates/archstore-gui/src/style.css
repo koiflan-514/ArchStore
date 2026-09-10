@@ -1,0 +1,134 @@
+/* ArchStore 样式（§7.5）
+ *
+ * 只定义确实需要的类。颜色一律使用 libadwaita 提供的命名色（不硬编码 hex），
+ * 保证深浅色自适应。
+ */
+
+.package-row {
+  padding: 8px 12px;
+}
+
+.package-row:hover {
+  background-color: alpha(@accent_bg_color, 0.08);
+  border-radius: 8px;
+}
+
+.package-name {
+  font-weight: bold;
+}
+
+.package-version {
+  font-feature-settings: "tnum";
+}
+
+.source-badge {
+  font-size: 0.75em;
+  padding: 1px 8px;
+  border-radius: 9999px;
+}
+
+.source-badge.official {
+  background-color: alpha(@accent_bg_color, 0.20);
+  color: @accent_fg_color;
+}
+
+.source-badge.aur {
+  background-color: alpha(@warning_bg_color, 0.25);
+}
+
+.source-badge.flatpak {
+  background-color: alpha(@success_bg_color, 0.25);
+}
+
+.state-pill {
+  font-size: 0.8em;
+}
+
+.state-pill.installed {
+  color: @success_color;
+}
+
+.state-pill.upgradable {
+  color: @accent_color;
+}
+
+.state-pill.orphan {
+  color: @warning_color;
+}
+
+.dep-missing {
+  color: @error_color;
+}
+
+.dep-build {
+  opacity: 0.75;
+}
+
+.dep-total {
+  font-weight: bold;
+}
+
+/* 计划栏：始终可见，明确表达"有待执行的事务" */
+.plan-bar {
+  border-top: 1px solid alpha(@borders, 0.6);
+  background-color: alpha(@window_bg_color, 0.95);
+}
+
+.plan-summary {
+  font-weight: bold;
+}
+
+.plan-warning {
+  color: @warning_color;
+  font-size: 0.85em;
+}
+
+/* 字母头像：没有图标的软件（AUR、无 AppStream 元数据的包）也有可辨识的图形。
+ * 颜色全部取自 libadwaita 的命名色，深浅色主题都自适应；不硬编码 hex。 */
+.avatar {
+  border-radius: 9999px;
+}
+
+.avatar-letter {
+  font-weight: bold;
+  font-size: 1.15em;
+  opacity: 0.95;
+}
+
+.avatar-0 { background-color: alpha(@accent_bg_color, 0.30); }
+.avatar-1 { background-color: alpha(@success_bg_color, 0.30); }
+.avatar-2 { background-color: alpha(@warning_bg_color, 0.32); }
+.avatar-3 { background-color: alpha(@error_bg_color, 0.28); }
+.avatar-4 { background-color: alpha(@accent_bg_color, 0.18); }
+.avatar-5 { background-color: alpha(@success_bg_color, 0.18); }
+.avatar-6 { background-color: alpha(@warning_bg_color, 0.20); }
+.avatar-7 { background-color: alpha(@error_bg_color, 0.16); }
+
+/* 骨架屏 */
+.skeleton {
+  background-color: alpha(@borders, 0.5);
+  border-radius: 6px;
+  min-height: 10px;
+}
+
+/* 截图占位 */
+.screenshot {
+  border-radius: 8px;
+  background-color: alpha(@borders, 0.35);
+}
+
+/* 详情页键值对 */
+.detail-key {
+  opacity: 0.7;
+}
+
+/* 侧栏计数 */
+.sidebar-count {
+  opacity: 0.6;
+  font-feature-settings: "tnum";
+}
+
+/* 进度条错误态 */
+progressbar.error > trough > progress {
+  background-color: @error_color;
+}

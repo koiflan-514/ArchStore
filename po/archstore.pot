@@ -1,0 +1,838 @@
+# ArchStore 翻译模板（由 make pot 生成，头部手工维护）。
+# Copyright (C) 2026 ArchStore Contributors
+# This file is distributed under the same license as the archstore package.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: archstore 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-10 19:43+0800\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: crates/archstore-core/src/i18n.rs:146 crates/archstore-gui/src/ui.rs:323
+msgid "Install"
+msgstr ""
+
+#: crates/archstore-gui/src/main.rs:225
+msgid "发生内部错误"
+msgstr ""
+
+#: crates/archstore-gui/src/main.rs:228
+msgid "应用遇到了未预期的问题，但没有静默退出。"
+msgstr ""
+
+#: crates/archstore-gui/src/main.rs:338
+msgid "系统库版本过低，无法启动 ArchStore"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:178
+msgid "搜索软件…"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:211
+#: crates/archstore-gui/src/pages/detail.rs:49
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:338
+msgid "详情"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:230
+msgid "首页"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:234
+#: crates/archstore-gui/src/window.rs:294
+msgid "分类"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:241
+#: crates/archstore-gui/src/widgets/dep_list.rs:268
+msgid "已安装"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:246
+#: crates/archstore-gui/src/pages/installed.rs:30
+msgid "可更新"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:248
+#: crates/archstore-gui/src/pages/settings.rs:711
+msgid "设置"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:250
+msgid "搜索"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:283
+msgid "软件来源"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:345
+msgid "导航"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:372
+msgid "刷新（F5）"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:375
+#: crates/archstore-gui/src/window.rs:601
+#: crates/archstore-gui/src/pages/settings.rs:263
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:172
+msgid "更新"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:379
+msgid "设置（Ctrl+,）"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:463
+msgid "上次事务可能未完成"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:466
+msgid "请运行 checkupdates / pacman -Qkk 检查系统状态"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:652
+msgid "来自 Flathub 趋势"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:904
+msgid "已加入计划"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:904
+msgid "需要确认后才会执行"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:916
+#: crates/archstore-gui/src/window.rs:1384
+msgid "提权不可用"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:934
+msgid "正在构建计划…"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1030
+msgid "缓存已按新上限裁剪"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1070
+#: crates/archstore-gui/src/window.rs:1833
+msgid "连接成功"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1090
+#: crates/archstore-gui/src/pages/settings.rs:215
+msgid "清除缓存"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1093
+msgid "将删除全部缓存数据（元数据与图标）。"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1097
+#: crates/archstore-gui/src/widgets/plan_bar.rs:227
+msgid "取消"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1098
+msgid "清除"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1118
+#: crates/archstore-gui/src/window.rs:1858
+msgid "缓存已清空"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1185
+#: crates/archstore-gui/src/pages/settings.rs:278
+msgid "运行环境自检"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1191
+#: crates/archstore-gui/src/widgets/plan_bar.rs:284
+msgid "关闭"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1206
+#: crates/archstore-gui/src/window.rs:1873
+msgid "已重新检测"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1301
+msgid "已刷新"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1401
+msgid "无法写入计划文件"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1515
+msgid "需要 paru 或 yay 才能执行 AUR 操作；查询功能不受影响。"
+msgstr ""
+
+#: crates/archstore-gui/src/window.rs:1593
+#: crates/archstore-gui/src/widgets/progress_panel.rs:137
+msgid "事务失败"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:88
+msgid "外观"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:90
+msgid "配色方案"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:92
+msgid "跟随系统"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:93
+msgid "浅色"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:94
+msgid "深色"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:98
+msgid "图标大小"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:100
+msgid "小"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:101
+msgid "中"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:102
+msgid "大"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:107
+msgid "动画"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:108
+msgid "关闭后列表不使用过渡动画"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:115
+msgid "网络"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:117
+msgid "使用代理"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:120
+msgid "代理类型"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:125
+msgid "代理地址（主机:端口，不含 http://）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:129
+msgid "测试连接"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:135
+msgid "连通性"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:142
+msgid "软件源"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:145
+msgid "官方仓库（pacman）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:148
+msgid "AUR"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:151
+msgid "AUR 助手"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:152
+msgid "自动检测"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:154
+msgid "不使用"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:160
+msgid "Flatpak"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:164
+msgid "Flatpak 远程仓库"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:175
+msgid "Flatpak 安装位置"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:178
+msgid "系统（需要授权）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:179
+msgid "用户"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:186
+msgid "后端状态"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:187
+msgid "重新检测"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:194
+msgid "重新检测后端能力"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:195
+msgid "不会下载任何数据，只重新读取本机状态"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:203
+msgid "缓存"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:206
+msgid "当前缓存大小"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:207
+msgid "按目录实际统计"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:212
+msgid "缓存上限（MB）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:223
+msgid "清空缓存目录"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:231
+msgid "翻译"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:234
+msgid "在线翻译软件描述"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:239
+msgid "隐私说明"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:241
+msgid ""
+"开启后，软件描述文本会发送到第三方翻译服务；译文会标注为「机器翻译」，绝不会"
+"冒充上游元数据。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:248
+msgid "翻译服务"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:250
+msgid "MyMemory（免费、无需注册）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:251
+msgid "LibreTranslate（你自己的端点）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:256
+msgid "LibreTranslate 端点（https://）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:266
+msgid "启动时检查更新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:271
+msgid "检查间隔（小时）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:277
+msgid "诊断"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:285
+msgid "运行环境自检（--doctor）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:287
+msgid "只读检测：发行版、GTK、libalpm、polkit、helper、flatpak、缓存目录"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:296
+msgid "关于"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:300
+msgid ""
+"GPL-3.0-or-later。包含以 GPL-3.0 静态链接的 libalpm 绑定（alpm crate）。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:303
+msgid "源码"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:311
+msgid "配置文件"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:317
+msgid "缓存与日志"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/settings.rs:714
+msgid "知道了"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/detail.rs:34
+msgid "选择左侧的软件查看详情"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/detail.rs:35
+msgid "详情页会先显示本地数据，再逐块填充网络字段。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/detail.rs:86
+msgid "正在补全详情…"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/detail.rs:126
+msgid "部分详情不可用"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:41
+#: crates/archstore-gui/src/pages/installed.rs:27
+msgid "全部"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:42
+msgid "官方仓库更新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:43
+msgid "AUR 更新（需要助手）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:44
+msgid "Flatpak 更新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:86
+msgid "一键更新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:169
+msgid "系统已是最新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:170
+msgid "没有可用的更新。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:194
+msgid "安全公告：不可用（将自动重试）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:198
+#: crates/archstore-gui/src/pages/updates.rs:215
+msgid "安全公告"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:199
+msgid "没有匹配到受影响的安全问题"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/updates.rs:205
+msgid "安全更新"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:55
+msgid "本地"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:62
+msgid "搜索来源："
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:68
+msgid "勾选 AUR / Flatpak 会在输入后联网请求；取消勾选则只查本地数据。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:133
+msgid "输入关键字开始搜索"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:134
+msgid "默认只搜本地；勾选 AUR / Flatpak 会联网查询。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:201
+msgid "搜索失败"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:208
+msgid "没有找到与"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:208
+msgid "匹配的软件"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/search.rs:209
+msgid "可以尝试勾选 AUR / Flatpak 来源，或检查拼写。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/mod.rs:61
+msgid "正在加载…"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/category.rs:56
+msgid "加载更多"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/category.rs:177
+#: crates/archstore-gui/src/pages/category.rs:191
+msgid "该分类暂无软件"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/category.rs:178
+#: crates/archstore-gui/src/pages/category.rs:192
+msgid "换一个分类，或确认同步数据库是最新的。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:28
+msgid "显式安装"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:29
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:328
+msgid "依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:31
+msgid "外来包（可能来自 AUR）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:69
+msgid "在已安装的软件中筛选（不联网）"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:139
+msgid "显示"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:147
+msgid "列表为空"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/installed.rs:148
+msgid "若系统已有软件包却显示为空，说明无法读取本地数据库，请运行诊断。"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/home.rs:28
+msgid "正在请求 Flathub…"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/home.rs:36
+#: crates/archstore-gui/src/widgets/dep_list.rs:165
+msgid "推荐"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/home.rs:58
+msgid "暂无推荐内容"
+msgstr ""
+
+#: crates/archstore-gui/src/pages/home.rs:59
+msgid "网络不可用或缓存为空。连接网络后点击重试。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:62
+msgid "依赖信息不完整：部分依赖无法解析（可能未收录或网络不可用）。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:66
+msgid "没有需要处理的依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:81
+msgid "运行时依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:87
+msgid "仅构建期需要，构建后可移除"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:90
+msgid "构建依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:98
+msgid "运行时与扩展"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:106
+msgid "可选依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:142
+#: crates/archstore-gui/src/widgets/dep_list.rs:210
+msgid "需要下载"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:159
+msgid "虚拟依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:166
+msgid "仅安装主包"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:192
+msgid "构建后自动清理构建依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/dep_list.rs:264
+msgid "将安装"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:62
+msgid "仅翻译了前一部分"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:69
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:265
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:302
+msgid "显示原文"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:151
+msgid "维护者"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:159
+msgid "主页"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:169
+msgid "安装"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:174
+msgid "重新安装"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:186
+msgid "卸载"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:209
+msgid "操作前会先显示计划清单，确认后才执行。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:254
+msgid "描述"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:294
+msgid "显示译文"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:312
+msgid "权限"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/package_detail_view.rs:365
+msgid "版本信息不可用"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:45
+msgid "查看详情"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:52
+msgid "执行"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:60
+msgid "放弃计划"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:125
+msgid "事务正在执行…"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:132
+msgid "上次事务已完成"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:142
+msgid "上次事务失败"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:160
+msgid ""
+"同时更新官方仓库与 AUR 包可能导致部分升级（partial upgrade），建议分开执行。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:165
+msgid "AUR 构建需要在终端中以用户身份完成，点击执行后会打开终端。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:215
+msgid "以及其它若干项"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:220
+#, rust-format
+msgid "删除 {package} 会影响 {count} 个已安装包。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:224
+msgid "删除会影响其它软件"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:228
+msgid "同时删除这些包"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:277
+msgid "计划为空"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:281
+msgid "计划详情"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:326
+msgid "已在终端中启动 AUR 操作"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/plan_bar.rs:334
+msgid "无法打开终端，命令已复制到剪贴板"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/error_view.rs:30
+#: crates/archstore-gui/src/widgets/error_view.rs:103
+msgid "出错了"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/error_view.rs:39
+msgid "重试"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/error_view.rs:48
+msgid "打开设置"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/error_view.rs:56
+msgid "复制诊断信息"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/error_view.rs:64
+#: crates/archstore-gui/src/widgets/progress_panel.rs:68
+msgid "已复制"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/error_view.rs:66
+#: crates/archstore-gui/src/widgets/progress_panel.rs:70
+msgid "复制失败"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:53
+msgid "原始日志"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:57
+msgid "复制错误详情"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:119
+msgid "事务已结束"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:123
+msgid "结果"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:210
+msgid "解析依赖"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:211
+msgid "检查密钥环"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:212
+msgid "下载中"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:213
+msgid "校验软件包"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:214
+msgid "检查文件冲突"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:215
+msgid "安装中"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:216
+msgid "更新中"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:217
+msgid "卸载中"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:218
+msgid "处理中"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:230
+msgid "事务正在进行"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:232
+msgid ""
+"关闭窗口会保留后台执行。杀掉 pacman 比让它跑完更危险，因此本程序不会中止事"
+"务。"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:235
+msgid "等待完成"
+msgstr ""
+
+#: crates/archstore-gui/src/widgets/progress_panel.rs:236
+msgid "最小化到后台"
+msgstr ""

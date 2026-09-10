@@ -1,0 +1,29 @@
+[package]
+name = "archstore-gui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "ArchStore GTK4 + libadwaita 图形界面"
+
+[[bin]]
+name = "archstore"
+path = "src/main.rs"
+
+[dependencies]
+archstore-core = { workspace = true }
+gtk         = { workspace = true }
+libadwaita  = { workspace = true, features = ["v1_8"] }
+glib        = { workspace = true }
+gio         = { workspace = true }
+tokio       = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+toml        = { workspace = true }
+tracing     = { workspace = true }
+tracing-subscriber = { workspace = true }
+gettext-rs  = { workspace = true }
+libc        = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

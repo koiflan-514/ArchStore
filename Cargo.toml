@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = ["crates/archstore-core", "crates/archstore-gui", "crates/archstore-helper"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "GPL-3.0-or-later"
+authors = ["ArchStore Contributors"]
+repository = "https://github.com/koiflan-514/ArchStore"
+description = "Arch Linux Software Store — pacman / AUR / Flatpak unified GUI"
+
+[workspace.dependencies]
+# --- GUI ---
+# gtk4 crate 的 lib 名是 gtk4；这里按社区惯例别名为 gtk（package 重命名）
+gtk         = { package = "gtk4", version = "0.11", features = ["v4_18"] }
+libadwaita  = { version = "0.9",  features = ["v1_8"] }
+glib        = "0.22"
+gio         = "0.22"
+
+# --- 包管理（仅 core / helper）---
+alpm = "5.0"
+
+# --- 网络 ---
+tokio   = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "process", "io-util"] }
+reqwest = { version = "0.13", features = ["json", "gzip", "brotli", "socks", "system-proxy"] }
+raur    = { version = "8", default-features = false, features = ["async", "rusttls-ring"] }
+
+# --- 序列化 / 异步 trait / 错误 / 日志 / i18n ---
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "1", features = ["preserve_order"] }
+async-trait = "0.1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+gettext-rs = "0.8"
+libc = "0.2"
+
+# --- 内部 crate ---
+archstore-core = { path = "crates/archstore-core" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = false

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=ArchStore
+Name[zh_CN]=ArchStore 软件商店
+GenericName=Software Store
+GenericName[zh_CN]=软件商店
+Comment=Install and manage pacman, AUR and Flatpak software
+Comment[zh_CN]=统一管理官方仓库、AUR 与 Flatpak 软件
+Icon=io.github.archstore.ArchStore
+Exec=archstore
+Keywords=pacman;AUR;Flatpak;package;software;store;
+Keywords[zh_CN]=软件;包管理;商店;应用;
+Categories=System;PackageManager;GTK;
+StartupNotify=true
+Terminal=false
+DBusActivatable=false

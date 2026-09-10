@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>ArchStore</vendor>
+  <vendor_url>https://github.com/koiflan-514/ArchStore</vendor_url>
+
+  <action id="io.github.archstore.ArchStore.transaction">
+    <description>安装、更新或删除软件包</description>
+    <description xml:lang="en">Install, update or remove software packages</description>
+    <message>需要授权以修改系统软件包</message>
+    <message xml:lang="en">Authentication is required to modify system packages</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <!-- helper 永远不接触显示服务器 -->
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/lib/archstore/archstore-helper</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">false</annotate>
+  </action>
+</policyconfig>

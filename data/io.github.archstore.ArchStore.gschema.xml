@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="archstore">
+  <!-- 仅窗口几何等非敏感偏好；其余设置一律走 config.toml（§6.3） -->
+  <schema id="io.github.archstore.ArchStore" path="/io/github/archstore/ArchStore/">
+    <key name="window-width" type="i">
+      <default>1100</default>
+      <summary>窗口宽度</summary>
+      <description>主窗口上次的宽度（像素）。</description>
+    </key>
+    <key name="window-height" type="i">
+      <default>720</default>
+      <summary>窗口高度</summary>
+      <description>主窗口上次的高度（像素）。</description>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+      <summary>是否最大化</summary>
+    </key>
+  </schema>
+</schemalist>
