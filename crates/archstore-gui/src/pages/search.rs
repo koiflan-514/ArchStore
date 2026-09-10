@@ -22,6 +22,8 @@ pub struct SearchPage {
     toggles: Rc<RefCell<SourceFilter>>,
     /// 当前有效的搜索代号：用于丢弃过期响应
     generation: Rc<Cell<u64>>,
+    /// 已经提示过的后端错误：增量上屏时同一批错误只弹一次 toast
+    reported_errors: RefCell<String>,
     /// 最后一次输入的内容（来源开关变化后要用它重跑搜索）。
     ///
     /// 用 `Rc<RefCell<…>>` 共享而不是 clone：`RefCell::clone()` 复制的是内容，
@@ -47,23 +49,30 @@ impl SearchPage {
     ) -> Self {
         let toggles = Rc::new(RefCell::new(SourceFilter::default()));
 
+        // 不用 .flat：flat 的 ToggleButton 选中后没有可见的色块，
+        // 用户看不出当前到底查了哪些来源（见 style.css 的 button.source-toggle:checked）。
         let make_toggle = |label: &str, active: bool| {
             let b = gtk::ToggleButton::with_label(label);
             b.set_active(active);
-            b.add_css_class("flat");
+            b.add_css_class("source-toggle");
             b
         };
         let pacman_toggle = make_toggle(&ui::t("本地"), true);
         let aur_toggle = make_toggle("AUR", true);
         let flatpak_toggle = make_toggle("Flatpak", true);
 
-        let toggle_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        toggle_box.set_margin_start(12);
-        toggle_box.set_margin_end(12);
-        toggle_box.append(&ui::label(&ui::t("搜索来源：")));
+        // 三个开关连成一段（linked），选中块之间的边界更清楚
+        let toggle_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        toggle_box.add_css_class("linked");
         toggle_box.append(&pacman_toggle);
         toggle_box.append(&aur_toggle);
         toggle_box.append(&flatpak_toggle);
+
+        let toggle_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        toggle_row.set_margin_start(12);
+        toggle_row.set_margin_end(12);
+        toggle_row.append(&ui::label(&ui::t("搜索来源：")));
+        toggle_row.append(&toggle_box);
 
         let note = ui::label(&ui::t(
             "勾选 AUR / Flatpak 会在输入后联网请求；取消勾选则只查本地数据。",
@@ -78,7 +87,7 @@ impl SearchPage {
         // 来源开关 + 说明常驻在结果区上方，任何空态/错态都不会影响它们
         let controls = gtk::Box::new(gtk::Orientation::Vertical, 6);
         controls.set_margin_top(8);
-        controls.append(&toggle_box);
+        controls.append(&toggle_row);
         controls.append(&note);
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -92,6 +101,7 @@ impl SearchPage {
             entry: entry.clone(),
             toggles: toggles.clone(),
             generation: Rc::new(Cell::new(0)),
+            reported_errors: RefCell::new(String::new()),
             last_query: Rc::new(RefCell::new(String::new())),
             pacman_toggle,
             aur_toggle,
@@ -151,6 +161,8 @@ impl SearchPage {
     pub fn next_generation(&self) -> u64 {
         let g = self.generation.get() + 1;
         self.generation.set(g);
+        // 新一轮搜索：允许重新提示后端错误
+        self.reported_errors.borrow_mut().clear();
         g
     }
 
@@ -176,7 +188,14 @@ impl SearchPage {
                 self.page.shell.show_error_text(&ui::t("搜索失败"), &text);
                 return;
             }
-            self.page.shell.toast(&text);
+            // 增量上屏会对同一个错误重复调用本函数，这里去重
+            {
+                let mut last = self.reported_errors.borrow_mut();
+                if *last != text {
+                    *last = text.clone();
+                    self.page.shell.toast(&text);
+                }
+            }
         }
         let empty = EmptyState::new(
             "edit-find-symbolic",

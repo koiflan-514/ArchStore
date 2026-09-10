@@ -9,6 +9,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use adw::prelude::*;
 use gtk::prelude::*;
@@ -1697,7 +1698,12 @@ fn wire_search(main: &Rc<MainWindow>) {
     }
 }
 
-/// 执行一次搜索（合并三个后端的结果）。
+/// 执行一次搜索：**每个来源各自并发、谁先回来谁先上屏**。
+///
+/// 旧实现按 pacman → AUR → Flatpak 顺序 await 三个来源、最后一次性合并显示，
+/// 于是"本地库只要几毫秒"的结果也要等最慢的联网来源（用户实测：等待时间过长）。
+/// 现在每个来源独立 spawn：本地库几乎立刻可见，AUR / Flatpak 命中 core 层缓存
+/// （AUR 搜索 5 分钟、Flathub 6 小时）时同样很快；还在路上的来源不再拖住已到的结果。
 pub fn run_search(main: &Rc<MainWindow>) {
     let Some(services) = main.services.borrow().clone() else {
         return;
@@ -1714,48 +1720,75 @@ pub fn run_search(main: &Rc<MainWindow>) {
     let generation = main.search.next_generation();
     main.search.show_loading();
     let filter = main.search.filter();
-    let main_ref = main.clone();
-    let query_for_task = query.clone();
-    runtime::spawn_ui(
-        async move {
-            let query = query_for_task;
-            let mut batches: Vec<Vec<PackageSummary>> = Vec::new();
-            let mut errors: Vec<(String, String)> = Vec::new();
-            if filter.pacman
-                && let Some(p) = services.pacman.as_ref()
-            {
-                match p.search(&query, SearchScope::Full).await {
-                    Ok(v) => batches.push(v),
-                    Err(e) => errors.push(("pacman".into(), e.user_message())),
+
+    // 只把"勾选了且后端可用"的来源放进列表（未勾选的来源完全不发请求）
+    let mut sources: Vec<(&'static str, Arc<dyn PackageBackend>)> = Vec::new();
+    if filter.pacman
+        && let Some(p) = services.pacman.as_ref()
+    {
+        sources.push(("pacman", Arc::clone(p) as Arc<dyn PackageBackend>));
+    }
+    if filter.aur
+        && let Some(a) = services.aur.as_ref()
+    {
+        sources.push(("AUR", Arc::clone(a) as Arc<dyn PackageBackend>));
+    }
+    if filter.flatpak
+        && let Some(f) = services.flatpak.as_ref()
+    {
+        sources.push(("Flatpak", Arc::clone(f) as Arc<dyn PackageBackend>));
+    }
+
+    if sources.is_empty() {
+        main.search.set_results(
+            &[],
+            &[("搜索来源".into(), "没有启用任何搜索来源".into())],
+            &query,
+        );
+        return;
+    }
+
+    let collected: Rc<RefCell<Vec<Vec<PackageSummary>>>> = Rc::new(RefCell::new(Vec::new()));
+    let errors: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(Vec::new()));
+    let remaining = Rc::new(Cell::new(sources.len()));
+
+    for (name, backend) in sources {
+        let query_task = query.clone();
+        let query_ui = query.clone();
+        let collected = Rc::clone(&collected);
+        let errors = Rc::clone(&errors);
+        let remaining = Rc::clone(&remaining);
+        let main_ref = main.clone();
+        let source = name.to_string();
+        runtime::spawn_ui(
+            async move { backend.search(&query_task, SearchScope::Full).await },
+            move |result| {
+                // 过期响应直接丢弃（用户又输入了、或又切了来源）
+                if main_ref.search.generation() != generation {
+                    return;
                 }
-            }
-            if filter.aur
-                && let Some(a) = services.aur.as_ref()
-            {
-                match a.search(&query, SearchScope::Full).await {
-                    Ok(v) => batches.push(v),
-                    Err(e) => errors.push(("AUR".into(), e.user_message())),
+                match result {
+                    Ok(items) => collected.borrow_mut().push(items),
+                    Err(e) => errors.borrow_mut().push((source, e.user_message())),
                 }
-            }
-            if filter.flatpak
-                && let Some(f) = services.flatpak.as_ref()
-            {
-                match f.search(&query, SearchScope::Full).await {
-                    Ok(v) => batches.push(v),
-                    Err(e) => errors.push(("Flatpak".into(), e.user_message())),
+                remaining.set(remaining.get().saturating_sub(1));
+                let merged =
+                    archstore_core::backend::merge_results(&query_ui, collected.borrow().clone());
+                // 还有来源在路上就先不下"没有找到"的结论，保持加载态
+                if merged.is_empty() && remaining.get() > 0 {
+                    main_ref.search.show_loading();
+                    return;
                 }
-            }
-            let merged = archstore_core::backend::merge_results(&query, batches);
-            (merged, errors)
-        },
-        move |(items, errors)| {
-            // 丢弃过期响应
-            if main_ref.search.generation() != generation {
-                return;
-            }
-            main_ref.search.set_results(&items, &errors, &query);
-        },
-    );
+                let errors = errors.borrow();
+                main_ref
+                    .search
+                    .set_results(&merged, errors.as_slice(), &query_ui);
+                if remaining.get() > 0 {
+                    main_ref.search.show_loading();
+                }
+            },
+        );
+    }
 }
 
 /// 分类选择：加载某个分类的第一页。

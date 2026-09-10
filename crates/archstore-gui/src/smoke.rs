@@ -454,6 +454,21 @@ fn ui_smoke_builds_every_page_and_widget() {
             "来源开关必须在 PageShell 之外，否则空态会把它吞掉"
         );
 
+        // 来源开关必须有可见的选中样式：不能是看不见选中态的 .flat 按钮，
+        // 且必须带 source-toggle 类（style.css 里 button.source-toggle:checked 的强调色块）。
+        // 注意 CSS provider 必须在 USER 优先级，否则会被用户自带的 GTK 主题盖掉。
+        for button in [&sp.pacman_toggle, &sp.aur_toggle, &sp.flatpak_toggle] {
+            assert!(
+                !button.has_css_class("flat"),
+                "flat 按钮选中后看不见色块（用户实测反馈）"
+            );
+            assert!(button.is_active(), "默认三个来源都应该打开");
+            assert!(
+                button.has_css_class("source-toggle"),
+                "来源开关必须带 source-toggle 类，否则选中态没有高亮色块"
+            );
+        }
+
         // 空态/错态下开关依然可见
         sp.set_results(&[], &[], "zzz");
         assert_eq!(sp.page.shell.state_name(), "empty");
@@ -728,6 +743,18 @@ line2",
     installed.refresh();
     assert_eq!(installed.visible_count(), 4);
     assert_eq!(installed.filter(), InstalledFilter::All);
+
+    // 下拉框切换必须**立即**生效：旧实现只改筛选状态、不重新应用，
+    // 于是"选了分组但列表没变"，要等下一次输入搜索框才刷新（用户实测反馈）。
+    installed.set_filter_index(3); // 可更新
+    assert_eq!(installed.filter(), InstalledFilter::Upgradable);
+    assert_eq!(
+        installed.visible_count(),
+        1,
+        "下拉框切换必须立即重新过滤，不需要再碰搜索框"
+    );
+    installed.set_filter_index(0);
+    assert_eq!(installed.visible_count(), 4);
 
     // ---------- 回归：筛选到空结果时不能把筛选栏一起吞掉（用户实测反馈）----------
     {

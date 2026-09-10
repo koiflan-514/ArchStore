@@ -40,6 +40,28 @@
   background-color: alpha(@success_bg_color, 0.25);
 }
 
+/* 搜索来源开关（分段控件）：选中态必须有明确的高亮色块。
+ * .flat 的 ToggleButton 选中后几乎看不出差别（用户实测反馈）。 */
+button.source-toggle {
+  min-width: 64px;
+}
+
+/* 补充规则：选中态也尝试上强调色（主高亮由 Rust 侧的 .suggested-action 保证，
+ * 因为实测自定义 CSS 的 :checked 会被主题的同名规则盖掉）。 */
+button.source-toggle:checked {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+  font-weight: bold;
+}
+
+button.source-toggle:checked {
+  background-color: @accent_bg_color;
+  background-image: none;
+  color: @accent_fg_color;
+  font-weight: bold;
+}
+
 .state-pill {
   font-size: 0.8em;
 }

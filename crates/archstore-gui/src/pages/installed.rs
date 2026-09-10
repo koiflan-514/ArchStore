@@ -67,6 +67,8 @@ impl InstalledPage {
     ) -> Self {
         let search = gtk::SearchEntry::new();
         search.set_placeholder_text(Some(&ui::t("在已安装的软件中筛选（不联网）")));
+        // 本地过滤（毫秒级），不需要 GTK 自带的 150 ms search-changed 延迟
+        search.set_search_delay(0);
         search.set_margin_start(12);
         search.set_margin_end(12);
         search.set_margin_top(8);
@@ -179,7 +181,10 @@ impl InstalledPage {
         *self.filter.borrow()
     }
 
-    /// 由下拉框下标设置筛选条件。
+    /// 由下拉框下标设置筛选条件，并**立即**重新过滤。
+    ///
+    /// 旧实现只改筛选状态、不重新应用，于是"选了分组但列表没变"，
+    /// 要等下一次输入搜索框才生效（用户实测反馈：筛选没有实时更新）。
     pub fn set_filter_index(&self, index: u32) {
         let filter = match index {
             1 => InstalledFilter::Explicit,
@@ -189,6 +194,7 @@ impl InstalledPage {
             _ => InstalledFilter::All,
         };
         *self.filter.borrow_mut() = filter;
+        self.apply(&self.search.text());
     }
 
     /// 重新应用筛选（搜索框内容变化或数据刷新后调用）。

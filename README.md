@@ -20,6 +20,7 @@
 - **三源统一搜索**：官方仓库（libalpm）、AUR（RPC v5）、Flathub 一次查完，结果按匹配度合并排序；
   来源开关默认**只查本地数据**，勾选后才联网。输入停止约 300 ms 自动搜索，
   **来源开关勾选变化立即用当前关键字重跑**（不必再按回车）。
+  **每个来源独立并发、谁先回来谁先上屏**：本地库几乎立刻可见，不等联网来源。
 - **计划式事务**：不存在"点击即静默执行"。先出计划清单（计划栏 → 计划详情 → 执行），
   再经 polkit 提权交给 helper 执行，全程有 JSON 事件流与进度面板。
 - **绝不 root 跑 GUI**：GTK 与 tokio 永远以普通用户运行，唯一的提权通道是 `archstore-helper`
@@ -303,6 +304,30 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
   `SearchPage` 的 generation 丢弃（`smoke.rs` 覆盖"输入必须推进代号"与"清空必须清结果"）。
   顺带把 `GtkSearchEntry` 自带的 150 ms `search-changed` 延迟归零，
   否则会和我们的防抖叠加成 450 ms。
+- **单来源也要等最慢的那个来源**（用户实测反馈："等待时间过长"）：
+  `run_search` 以前是 pacman → AUR → Flatpak **顺序 await**、全部返回后才一次性合并显示，
+  于是本地库几毫秒的结果也要被联网来源拖住。
+  现在每个来源各自 `spawn`、**谁先回来谁先上屏**（`merge_results` 逐次重排），
+  未勾选的来源完全不发请求；AUR 搜索 5 分钟、Flathub 6 小时的 core 层缓存照常命中，
+  本地库通常首帧就有结果。还有来源在路上时不会先下"没有找到"的结论（保持加载态）。
+- **来源开关选中后没有高亮色块**（用户实测反馈）：三个开关都带 `.flat`，
+  而 flat 按钮在选中态也没有背景，勾没勾上看不出来。
+  加了 `button.source-toggle:checked` 的强调色规则后**仍然看不到** —— 排查发现
+  本机 `~/.config/gtk-4.0/gtk.css` 是 Noctalia 的 Material You 主题（25 KB，
+  自带 `button:checked` 与 `@define-color accent_bg_color #bd93f9`），它以
+  `GTK_STYLE_PROVIDER_PRIORITY_USER`(800) 加载，而我们的 CSS 用的是
+  `STYLE_PROVIDER_PRIORITY_APPLICATION`(600) —— **整个 app 样式被用户主题盖掉**
+  （只有主题里不存在的类，如 `.avatar-*`，看起来"正常"，掩盖了这个问题）。
+  修复：`ui::load_css` 改用 `STYLE_PROVIDER_PRIORITY_USER`，我们更具体的
+  `button.source-toggle:checked` 稳定胜出；`smoke.rs` 断言开关必须带
+  `source-toggle` 且不得带 `flat`。
+  > 教训：**自定义 CSS 的"生效"必须用像素验证**，不能只看类名/结构断言 ——
+  > 结构全对、样式被主题吃掉时，界面照样是"没反应"。
+- **"我的 · 已安装"的状态下拉框不实时生效**（用户实测反馈）：
+  `set_filter_index` 只改了筛选状态、没有重新应用，选完分组列表纹丝不动，
+  要等下一次在搜索框里打字才刷新。现在下拉框变化立即重新过滤；
+  本地过滤同时把 `GtkSearchEntry` 的 150 ms 延迟归零。
+  `smoke.rs` 新增断言：`set_filter_index(可更新)` 后 `visible_count()` 必须当场变化。
 - **详情页没有返回键**：`AdwNavigationView` 只会往"页面里的 `AdwHeaderBar`"注入返回键，
   而详情页根控件原本是裸的 `GtkBox`。已包成 `AdwToolbarView + AdwHeaderBar`，
   并补了 `Esc`（先返回列表）与 `Alt+Left` 快捷键。回归测试用递归查找确认

@@ -144,6 +144,11 @@ pub fn subtitle(summary: &PackageSummary) -> String {
 /// 加载 CSS（开发模式下监听文件变化热重载）。
 ///
 /// 颜色一律使用 libadwaita 提供的命名色，保证深浅色自适应。
+///
+/// **优先级必须是 USER**：实测用户自带的 GTK 主题（如 Noctalia 的 Material You
+/// gtk.css）以 `GTK_STYLE_PROVIDER_PRIORITY_USER` 加载，APPLICATION 级别会被它整个盖住 ——
+/// 表现就是"来源开关勾了却看不到高亮色块"（用户实测反馈）。
+/// USER 与我们自己的类选择器同时生效时，带 .source-toggle 的规则更具体，稳定胜出。
 pub fn load_css() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("style.css"));
@@ -151,7 +156,7 @@ pub fn load_css() {
         gtk::style_context_add_provider_for_display(
             &display,
             &provider,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            gtk::STYLE_PROVIDER_PRIORITY_USER,
         );
     }
 
@@ -163,7 +168,7 @@ pub fn load_css() {
             gtk::style_context_add_provider_for_display(
                 &display,
                 &provider_reload,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+                gtk::STYLE_PROVIDER_PRIORITY_USER + 1,
             );
         }
         let file = gio::File::for_path(&path);
