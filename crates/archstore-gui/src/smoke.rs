@@ -715,6 +715,53 @@ line2",
     assert_eq!(installed.visible_count(), 4);
     assert_eq!(installed.filter(), InstalledFilter::All);
 
+    // ---------- 回归：筛选到空结果时不能把筛选栏一起吞掉（用户实测反馈）----------
+    {
+        // 结构上：搜索框必须在 PageShell 的 stack 之外
+        let shell_widget: gtk::Widget = installed.page.shell.stack.clone().upcast();
+        let mut node: Option<gtk::Widget> = Some(installed.search_entry().clone().upcast());
+        let mut inside_shell = false;
+        while let Some(w) = node {
+            if w == shell_widget {
+                inside_shell = true;
+                break;
+            }
+            node = w.parent();
+        }
+        assert!(
+            !inside_shell,
+            "已安装页的搜索框必须在 PageShell 之外，否则空态会把它吞掉"
+        );
+
+        // 输入一个本机不存在的软件名：列表变空、进入空态，但筛选栏必须还在
+        installed
+            .search_entry()
+            .set_text("definitely-not-installed-zzz");
+        installed.refresh();
+        assert_eq!(installed.page.shell.state_name(), "empty");
+        assert_eq!(installed.visible_count(), 0);
+        assert!(
+            installed.search_entry().get_visible(),
+            "空态下搜索框必须仍然可见（否则用户改不回筛选条件）"
+        );
+        assert!(
+            installed.filter_dropdown().get_visible(),
+            "空态下筛选下拉框必须仍然可见"
+        );
+
+        // 清空后必须能恢复全量列表
+        installed.search_entry().set_text("");
+        installed.refresh();
+        assert_eq!(installed.page.shell.state_name(), "content");
+        assert_eq!(installed.visible_count(), 4);
+
+        // 切到"依赖"筛选也一样：控件不能消失
+        installed.set_filter(InstalledFilter::Dependency, "");
+        assert!(installed.search_entry().get_visible());
+        assert!(installed.filter_dropdown().get_visible());
+        installed.set_filter(InstalledFilter::All, "");
+    }
+
     let updates = UpdatesPage::new(&ctx, |_| {}, Box::new(|| {}), Box::new(|| {}));
     let advisories = vec![archstore_core::flathub::Advisory {
         name: "AVG-1".into(),
@@ -734,6 +781,15 @@ line2",
     assert!(
         !updates.update_all_button().get_sensitive(),
         "无更新时一键更新禁用"
+    );
+    // 空态下分组下拉框与"一键更新"同样必须常驻（与已安装页同一类缺陷）
+    assert!(
+        updates.group_dropdown().get_visible(),
+        "空态下分组下拉框必须仍然可见"
+    );
+    assert!(
+        updates.update_all_button().get_visible(),
+        "空态下一键更新按钮必须仍然可见"
     );
 
     let search_entry = gtk::SearchEntry::new();

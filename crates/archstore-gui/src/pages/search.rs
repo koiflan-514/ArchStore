@@ -82,7 +82,8 @@ impl SearchPage {
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.append(&controls);
-        root.append(&page.shell.overlay);
+        // ListPage::root = [表头] + [三态结果区]；搜索页自己不带表头
+        root.append(&page.root);
 
         let this = Self {
             root,

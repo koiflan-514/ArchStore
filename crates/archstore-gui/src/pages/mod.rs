@@ -166,6 +166,15 @@ impl PageShell {
 /// 列表页：PageShell + GtkListView + 增量更新。
 #[derive(Clone)]
 pub struct ListPage {
+    /// 页面根控件：**[常驻表头] + [三态结果区]**。
+    ///
+    /// 表头（已安装页的筛选框、可更新页的分组下拉框与"一键更新"、首页的数据来源说明…）
+    /// 必须留在 `PageShell` 的 stack **之外**：stack 切换空/错态时会整个替换掉
+    /// `shell.content`，表头要是放在里面，就会跟着消失。
+    ///
+    /// 实测缺陷（用户反馈）：在"已安装"里筛选一个不存在的软件，列表变空的同时
+    /// **搜索框也被吞掉**，用户再也改不回筛选条件。
+    pub root: gtk::Box,
     pub shell: PageShell,
     pub store: gio::ListStore,
     pub view: gtk::ListView,
@@ -211,13 +220,18 @@ impl ListPage {
             }
         });
 
+        // 表头固定在结果区上方，**不放进 shell.content**（见 root 的说明）
+        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         if let Some(header) = header {
-            shell.content.append(&header);
+            root.append(&header);
         }
+        root.append(&shell.overlay);
+
         shell.content.append(&progress);
         shell.content.append(&scroll);
 
         Self {
+            root,
             shell,
             store,
             view,

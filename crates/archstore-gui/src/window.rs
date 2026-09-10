@@ -227,24 +227,14 @@ pub fn build(app: &adw::Application) -> Rc<MainWindow> {
 
     // ---------- ViewStack ----------
     let stack = adw::ViewStack::new();
-    stack.add_titled(&home.page.shell.overlay, Some("home"), &ui::t("首页"));
-    stack.add_titled(
-        &category.page.shell.overlay,
-        Some("category"),
-        &ui::t("分类"),
-    );
+    // 注册 page.root 而不是 page.shell.overlay：表头（筛选框/来源说明/一键更新）
+    // 必须常驻，空态只能替换结果区，不能把筛选控件一起吞掉。
+    stack.add_titled(&home.page.root, Some("home"), &ui::t("首页"));
+    stack.add_titled(&category.page.root, Some("category"), &ui::t("分类"));
     // 注意：GTK 中一个控件只能有一个父容器。"AUR 社区"与"Flatpak"不注册独立页面，
     // 而是复用分类页并按来源过滤（否则会出现 GLib-GObject-CRITICAL 且页面不可用）。
-    stack.add_titled(
-        &installed.page.shell.overlay,
-        Some("installed"),
-        &ui::t("已安装"),
-    );
-    stack.add_titled(
-        &updates.page.shell.overlay,
-        Some("updates"),
-        &ui::t("可更新"),
-    );
+    stack.add_titled(&installed.page.root, Some("installed"), &ui::t("已安装"));
+    stack.add_titled(&updates.page.root, Some("updates"), &ui::t("可更新"));
     stack.add_titled(&settings.root, Some("settings"), &ui::t("设置"));
     // 搜索页：来源开关常驻在结果区之上，空态只替换结果区
     stack.add_titled(&search.root, Some("search"), &ui::t("搜索"));

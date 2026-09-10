@@ -162,14 +162,27 @@ impl UpdatesPage {
             all.iter().filter(|s| group.matches(s)).cloned().collect();
         let visible = filter_local(&visible, "");
         self.update_all.set_sensitive(!visible.is_empty());
-        self.page.set_items(
-            &visible,
+        // 同样是两种"空"：真的没有更新 vs 当前分组下没有更新
+        let empty = if all.is_empty() {
             EmptyState::new(
                 "emblem-ok-symbolic",
                 ui::t("系统已是最新"),
                 ui::t("没有可用的更新。"),
-            ),
-        );
+            )
+        } else {
+            EmptyState::new(
+                "emblem-ok-symbolic",
+                ui::t("该分组下没有更新"),
+                format!(
+                    "{}：{} / {}。{}",
+                    ui::t("当前分组"),
+                    visible.len(),
+                    all.len(),
+                    ui::t("切回「全部」可以看到其它来源的更新。")
+                ),
+            )
+        };
+        self.page.set_items(&visible, empty);
     }
 
     /// 安全公告横幅：仅在更新页可见时拉取一次并缓存 6 小时。

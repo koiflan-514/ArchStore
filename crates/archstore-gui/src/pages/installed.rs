@@ -140,15 +140,29 @@ impl InstalledPage {
             visible.len(),
             all.len()
         ));
-        self.page.set_items(
-            &visible,
+        // 两种"空"要分开说：数据本身为空（读不到本地库）vs 筛选/搜索没命中。
+        // 后者不该让用户以为系统数据库坏了。
+        let empty = if all.is_empty() {
             EmptyState::new(
                 "dialog-warning-symbolic",
                 ui::t("列表为空"),
                 ui::t("若系统已有软件包却显示为空，说明无法读取本地数据库，请运行诊断。")
                     .to_string(),
-            ),
-        );
+            )
+        } else {
+            EmptyState::new(
+                "edit-find-symbolic",
+                ui::t("没有匹配的软件"),
+                format!(
+                    "{}：{} / {}。{}",
+                    ui::t("筛选后没有匹配项"),
+                    visible.len(),
+                    all.len(),
+                    ui::t("换个关键字，或把筛选切回「全部」。")
+                ),
+            )
+        };
+        self.page.set_items(&visible, empty);
     }
 
     pub fn search_entry(&self) -> &gtk::SearchEntry {
