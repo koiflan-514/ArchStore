@@ -30,7 +30,7 @@ use crate::pages::search::SearchPage;
 use crate::pages::settings::{SettingsCallbacks, SettingsPage};
 use crate::pages::updates::UpdatesPage;
 use crate::runtime;
-use crate::state::{AppState, Services, TxEvent, TxState};
+use crate::state::{AppState, Services, TxEvent};
 use crate::ui;
 use crate::widgets::RowContext;
 use crate::widgets::plan_bar::{self, PlanBar, PlanBarCallbacks};
@@ -1388,7 +1388,21 @@ fn execute_plan(main: &Rc<MainWindow>) {
         return;
     }
 
-    if !services.can_elevate() {
+    // 用户级 Flatpak（--user）不需要提权：同一个 helper 以当前用户直接执行。
+    // 其余计划必须走 pkexec。
+    let user_scope = main
+        .state
+        .tx
+        .borrow()
+        .plan()
+        .map(|p| p.is_user_scope())
+        .unwrap_or(false);
+    if user_scope {
+        if let Some(reason) = services.user_scope_reason() {
+            ui::toast(&main.toast, &reason);
+            return;
+        }
+    } else if !services.can_elevate() {
         let reason = services
             .elevation_reason()
             .unwrap_or_else(|| ui::t("提权不可用"));
@@ -1434,7 +1448,7 @@ fn execute_plan(main: &Rc<MainWindow>) {
     crate::state::clear_plan_done(&archstore_core::config::paths::cache_dir());
 
     let main_ref = main.clone();
-    plan_bar::spawn_helper(path.clone(), plan.kind, move |event| {
+    plan_bar::spawn_helper(path.clone(), plan.kind, !user_scope, move |event| {
         let finished_ok = matches!(
             &event,
             crate::state::HelperEvent::Done { status, .. } if status == "ok"
@@ -1541,26 +1555,26 @@ fn handle_helper_event(
     use crate::state::HelperEvent as E;
     let current = main.state.tx.borrow().clone();
     match event {
-        E::Progress { .. } | E::Log { .. } => {
-            if let Some(progress) = current_progress(&current) {
-                let mut next = progress.clone();
-                match &event {
-                    E::Progress {
-                        phase,
-                        percent,
-                        detail,
-                    } => {
-                        next.phase = phase.clone();
-                        next.percent = *percent;
-                        next.detail = detail.clone();
-                    }
-                    E::Log { line, .. } => next.push_log(line.clone()),
-                    _ => {}
-                }
-                main.progress.update(&next);
-                if let Ok(state) = current.clone().apply(TxEvent::Progress(next)) {
-                    *main.state.tx.borrow_mut() = state;
-                }
+        E::Progress {
+            phase,
+            percent,
+            detail,
+        } => {
+            // 就地更新：不克隆整个 Progress（最多 5000 行日志），否则下载进度一刷
+            // 就是几十 MB 的分配抖动（用户实测：flatpak 下载触发内存耗空）。
+            let mut state = main.state.tx.borrow_mut();
+            if state.set_progress(&phase, percent, &detail)
+                && let Some(progress) = state.progress()
+            {
+                main.progress.update(progress);
+            }
+        }
+        E::Log { line, .. } => {
+            let mut state = main.state.tx.borrow_mut();
+            if state.push_progress_log(line)
+                && let Some(progress) = state.progress()
+            {
+                main.progress.update(progress);
             }
         }
         E::Start { .. } => {}
@@ -1612,13 +1626,6 @@ fn handle_helper_event(
             let _ = kind;
             refresh_plan_bar(main);
         }
-    }
-}
-
-fn current_progress(state: &TxState) -> Option<&crate::state::Progress> {
-    match state {
-        TxState::Running { progress, .. } => Some(progress),
-        _ => None,
     }
 }
 

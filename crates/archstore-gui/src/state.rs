@@ -307,6 +307,23 @@ impl Services {
         self.helper.is_some() && self.pkexec.is_some()
     }
 
+    /// 是否可以执行**用户级** Flatpak 事务（不需要 pkexec，直接以当前用户跑 helper）。
+    pub fn can_run_user_scope(&self) -> bool {
+        self.helper.is_some()
+    }
+
+    /// 用户级事务不可用的原因。
+    pub fn user_scope_reason(&self) -> Option<String> {
+        if self.helper.is_some() {
+            None
+        } else {
+            Some(
+                "尚未安装 archstore-helper（/usr/lib/archstore/archstore-helper），Flatpak 用户级安装不可用"
+                    .into(),
+            )
+        }
+    }
+
     /// 提权不可用的原因（面向用户）。
     pub fn elevation_reason(&self) -> Option<String> {
         match (&self.helper, &self.pkexec) {
@@ -424,11 +441,25 @@ impl Progress {
 
     /// 追加日志（环形上限 5000 行）。
     pub fn push_log(&mut self, line: impl Into<String>) {
-        const MAX: usize = 5000;
-        if self.log_lines.len() >= MAX {
+        if self.log_lines.len() >= Self::MAX_LOG_LINES {
             self.log_lines.remove(0);
         }
         self.log_lines.push(line.into());
+    }
+
+    /// 日志行数上限。
+    pub const MAX_LOG_LINES: usize = 5000;
+
+    /// 把日志截回上限。
+    ///
+    /// **为什么必须有这个函数**：状态机合并进度时如果只 append 不设上限，
+    /// 日志会**指数增长** —— 实测旧实现每来一行日志，行数就翻一次倍
+    /// （旧日志 + 「旧日志 + 新行」），flatpak 下载几秒就能吃光内存。
+    pub fn trim_log(&mut self) {
+        if self.log_lines.len() > Self::MAX_LOG_LINES {
+            let drop = self.log_lines.len() - Self::MAX_LOG_LINES;
+            self.log_lines.drain(..drop);
+        }
     }
 }
 
@@ -472,6 +503,42 @@ impl TxState {
         matches!(self, TxState::Draft { .. })
     }
 
+    /// 当前进度（仅运行中）。
+    pub fn progress(&self) -> Option<&Progress> {
+        match self {
+            TxState::Running { progress, .. } => Some(progress),
+            _ => None,
+        }
+    }
+
+    /// 就地追加一行日志。
+    ///
+    /// 为什么不用 `apply(TxEvent::Progress(…))`：那需要先克隆一份完整进度
+    /// （最多 5000 行日志）再合并，flatpak 下载时每行输出都要克隆一次，
+    /// 既费内存又费 CPU。就地改一行是 O(1)。
+    pub fn push_progress_log(&mut self, line: impl Into<String>) -> bool {
+        match self {
+            TxState::Running { progress, .. } => {
+                progress.push_log(line);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// 就地更新进度的阶段/百分比/详情。
+    pub fn set_progress(&mut self, phase: &str, percent: Option<u8>, detail: &str) -> bool {
+        match self {
+            TxState::Running { progress, .. } => {
+                progress.phase = phase.to_string();
+                progress.percent = percent;
+                progress.detail = detail.to_string();
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// 状态机转移函数：非法转移返回 Err 且不改变状态。
     pub fn apply(self, event: TxEvent) -> CoreResult<TxState> {
         use TxEvent as E;
@@ -507,11 +574,13 @@ impl TxState {
 
             // 进度
             (TxState::Running { plan, progress }, E::Progress(next)) => {
-                // 日志累积：旧日志 + 本批次新日志，其余字段取最新
+                // next 已经是"旧进度 + 本次新增"的完整快照（调用方先 push_log 再传进来），
+                // 这里**只能截断、不能再把旧日志接一遍**：
+                //   lines = 旧日志 + (旧日志 + 新行)  =>  每来一行日志行数翻倍
+                // 旧实现在 flatpak 下载时几秒钟就把内存吃光（用户实测反馈）。
+                let _ = progress; // 旧进度只用于说明：不要再 append 它
                 let mut merged = next;
-                let mut lines = progress.log_lines;
-                lines.append(&mut merged.log_lines);
-                merged.log_lines = lines;
+                merged.trim_log();
                 Ok(TxState::Running {
                     plan,
                     progress: merged,
@@ -536,10 +605,6 @@ impl TxState {
             (_, E::Cancel) => Ok(TxState::Cancelled),
         }
     }
-}
-
-fn next_lines(next: &Progress, _previous: &Progress) -> Vec<String> {
-    next.log_lines.clone()
 }
 
 fn invalid(state: &TxState, action: &str) -> CoreError {
@@ -1000,6 +1065,69 @@ mod tests {
         }
         assert_eq!(p.log_lines.len(), 5000);
         assert_eq!(p.log_lines.last().map(|s| s.as_str()), Some("line 5999"));
+    }
+
+    /// 回归：进度事件合并**绝不能**让日志指数增长。
+    ///
+    /// 旧实现把「旧日志 + (旧日志 + 新行)」接在一起，每来一行日志行数就翻倍，
+    /// flatpak 下载几秒钟就把内存吃光（用户实测反馈）。
+    #[test]
+    fn progress_events_do_not_grow_logs_exponentially() {
+        let mut plan = TransactionPlan::new(PlanKind::FlatpakInstall);
+        plan.push(PlanItem::flatpak(
+            String::from("flathub"),
+            Installation::System,
+            String::from("org.mozilla.firefox"),
+        ));
+        let mut state = TxState::Idle
+            .apply(TxEvent::Enqueue(plan))
+            .expect("enqueue");
+        state = state.apply(TxEvent::Confirm).expect("confirm");
+        state = state.apply(TxEvent::Authorize).expect("authorize");
+        state = state.apply(TxEvent::Start).expect("start");
+
+        // 模拟 200 行 flatpak 输出：每行都是"旧进度 + 新行"的完整快照。
+        // 旧实现（apply 里再 append 一次旧日志）到这里已经是 2^200 行，早就 OOM；
+        // 正确实现必须严格线性：第 n 次事件后正好 n 行。
+        const EVENTS: usize = 200;
+        for i in 0..EVENTS {
+            let mut next = state.progress().cloned().expect("running");
+            next.push_log(format!("progress line {i}"));
+            state = state.apply(TxEvent::Progress(next)).expect("progress");
+            assert_eq!(
+                state.progress().expect("running").log_lines.len(),
+                i + 1,
+                "日志行数必须线性增长（每行日志 +1），第 {i} 次事件后已经不是"
+            );
+        }
+        let lines = &state.progress().expect("running").log_lines;
+        assert!(lines.len() <= Progress::MAX_LOG_LINES);
+        assert_eq!(lines.last().map(String::as_str), Some("progress line 199"));
+    }
+
+    /// 就地更新 API 与状态机合并必须等价（且不复制整个进度）。
+    #[test]
+    fn in_place_progress_update_is_bounded() {
+        let mut plan = TransactionPlan::new(PlanKind::FlatpakInstall);
+        plan.push(PlanItem::flatpak(
+            String::from("flathub"),
+            Installation::System,
+            String::from("org.mozilla.firefox"),
+        ));
+        let mut state = TxState::Idle
+            .apply(TxEvent::Enqueue(plan))
+            .expect("enqueue");
+        state = state.apply(TxEvent::Confirm).expect("confirm");
+        state = state.apply(TxEvent::Authorize).expect("authorize");
+        state = state.apply(TxEvent::Start).expect("start");
+        for i in 0..8000 {
+            assert!(state.push_progress_log(format!("line {i}")));
+        }
+        assert!(state.set_progress("download", Some(42), "firefox.flatpak"));
+        let p = state.progress().expect("running");
+        assert_eq!(p.log_lines.len(), Progress::MAX_LOG_LINES);
+        assert_eq!(p.phase, "download");
+        assert_eq!(p.percent, Some(42));
     }
 
     #[test]

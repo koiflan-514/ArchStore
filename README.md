@@ -13,7 +13,7 @@
 | ![首页](docs/screenshot-home.png) | ![搜索](docs/screenshot-search.png) |
 
 > 界面以简体中文为主（gettext，含 zh_TW），软件名支持中文映射表。
-> 当前版本 **v0.1.0**：只读查询、事务计划与提权执行全部跑通；**289 个测试全绿**。
+> 当前版本 **v0.1.0**：只读查询、事务计划与提权执行全部跑通；**294 个测试全绿**。
 
 ## 特性
 
@@ -166,7 +166,7 @@ AppStream metainfo、polkit policy、gschema、zh_CN / zh_TW 翻译与软件名�
 make check    # fmt --check + clippy -D warnings + 全部测试 + 依赖方向约束 + msgfmt --check
 ~~~
 
-当前状态：**289 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 50 + helper 30）。
+当前状态：**294 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 52 + helper 33）。
 
 | 层级 | 内容 |
 | --- | --- |
@@ -323,6 +323,30 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
   `source-toggle` 且不得带 `flat`。
   > 教训：**自定义 CSS 的"生效"必须用像素验证**，不能只看类名/结构断言 ——
   > 结构全对、样式被主题吃掉时，界面照样是"没反应"。
+- **安装 Flatpak 时"内存耗空"**（用户实测反馈）：三个独立问题叠在一起。
+  1. **日志指数增长**（主因）：`TxState::apply(TxEvent::Progress(..))` 把
+     "旧日志 + （旧日志 + 新行）"接在一起 —— **每来一行输出，日志行数就翻一倍**。
+     5000 行上限只写在 `Progress::push_log` 里，状态机合并时被完全绕过，
+     flatpak 下载几秒钟就能把内存吃光。现在合并只做截断、不再拼接，
+     `smoke`/`state` 加了"行数必须线性增长（第 n 次事件正好 n 行）"的回归测试。
+  2. **helper 把 stderr 攒到子进程结束才回放**：stderr 由一个线程读进**无界**
+     `std::mpsc::channel`，主线程要等 stdout 读完、子进程退出后才排空 ——
+     而 flatpak 的下载进度走的正是 stderr。现在 stdout / stderr 都进**有界**
+     `sync_channel`，主线程边收边发（背压代替无限缓冲），
+     并有"子进程还在跑时第一行就必须被转发"的测试锁住。
+  3. **GUI 侧无界事件队列 + 每个事件克隆整份进度**：
+     `unbounded_channel` 换成有界通道（队列满就丢弃中间进度，不影响最终
+     `done`/`error`），进度更新改成**就地修改**（原来每个事件都要克隆一份
+     最多 5000 行日志的 `Progress`），日志面板也改成增量追加
+     （原来每行都 `join` 出整块文本再 `set_text`）。
+  另外给 flatpak 的进度事件加了节流：**同一阶段同一百分比只上报一次**
+  （下载时每秒几十行 "Downloading… N%" 不再逐个变成事件）。
+- **用户级 Flatpak（`--user`）根本装不上**：`execute_plan` 无条件走 pkexec，
+  而 helper 又明确拒绝用户级计划（原因写得很对："`--user` 会指向 root 的安装位置"），
+  于是设置里把安装位置选成 user 之后，每次安装都必然失败。
+  现在用户级计划**不提权**：同一个 helper 以当前用户直接运行
+  （helper 侧只在 `euid == 0` 时拒绝 user 计划），
+  `flatpak remote-info` 的存在性校验也按计划声明的安装位置走。
 - **"我的 · 已安装"的状态下拉框不实时生效**（用户实测反馈）：
   `set_filter_index` 只改了筛选状态、没有重新应用，选完分组列表纹丝不动，
   要等下一次在搜索框里打字才刷新。现在下拉框变化立即重新过滤；
@@ -378,7 +402,7 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
 **已验证（本机实测）**
 
 - `cargo build --release --workspace`、`cargo clippy -- -D warnings`、`cargo fmt --check`、
-  **289 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 50 + helper 30）
+  **294 个测试全绿**（core 189 + 集成 7/9/4 + UI 冒烟 52 + helper 33）
 - `--doctor` 输出与设计文档基线逐项一致（local 972 包 / explicit 185 / core 297 / extra 14955），
   并新增图标来源一项：`[ OK ] 软件图标：AppStream 覆盖 1260 个仓库包；46 个已安装包另有 .desktop 图标（含 AUR 软件）`
 - **图标修复的端到端验证**（Xvfb 下运行 release 二进制 + XTEST 注入真实键入）：
@@ -419,7 +443,19 @@ GUI 侧（`src/smoke.rs` 内实测，debug 构建即已满足）：
 
 - **AUR 助手的实际构建**：需要 TTY 与 sudo 密码，且会在用户身份下编译软件包；
   本机只验证到"构造参数数组 + 打开终端 + 无法打开终端时复制到剪贴板"这一层。
-- **Flatpak 写事务**：需要 flathub 远程可写与本机安装位置，未执行。
+- **Flatpak 写事务（已在本机完整跑通）**：用 `examples/make-plan` 的
+  **真实 Flatpak 计划**（`make-plan <dir> flatpak-install org.gnome.Characters flathub`）
+  交给 helper，以 root 执行系统级安装：
+
+  | 步骤 | 结果 |
+  | --- | --- |
+  | `org.gnome.Characters`（1.6 MB，运行时已在本地） | helper 退出码 **0**，6 秒完成 |
+  | 事件流 | **37 条全部是合法 JSON**（start 1 / progress 13 / log 22 / done 1） |
+  | helper 峰值 RSS | **11.9 MB**（采样重装那一次：33 条事件、3.3 秒） |
+  | 安装结果 | `flatpak info --system org.gnome.Characters` 有输出；`flatpak list` 多出该应用 |
+  | 清理 | 测试后卸载，`flatpak list` 与测试前逐行一致 |
+- **Flatpak 写事务（用户级 `--user`）**：不提权路径已实现（helper 以当前用户执行），
+  但本机用户安装位置没有配置远程仓库，未做端到端安装验证。
 - **在真实 GPU 上的渲染性能**：本机无头环境只能测到 llvmpipe 软件光栅化。
 
 ## 范围

@@ -342,14 +342,22 @@ pub fn run_aur_in_terminal(
 ///
 /// 所有事件都通过 glib 主循环回投：后台线程绝不触碰控件。
 /// pkexec 的退出码 126/127 分别表示"授权被拒绝/未找到程序"，映射为 AuthDenied。
+/// `elevate = false` 用于**用户级 Flatpak**：同一个 helper 直接以当前用户运行，
+/// 不经过 pkexec（helper 会拒绝"以 root 执行 --user"的情况）。
 pub fn spawn_helper(
     plan_path: std::path::PathBuf,
     kind: PlanKind,
+    elevate: bool,
     on_event: impl Fn(crate::state::HelperEvent) + 'static,
 ) {
     // 回调持有 Rc 控件句柄，不能要求 Send：事件先进入通道，
     // 再由主线程上的 spawn_local 消费（tokio 通道与执行器无关）。
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::state::HelperEvent>();
+    //
+    // **必须有界**：flatpak / pacman 的下载进度可以刷得极快，无界队列在主循环
+    // 跟不上的时候会一直堆，直到内存耗空（用户实测：安装 flatpak 时触发 OOM）。
+    // 满了就丢掉这条事件 —— 面板本来就只展示"最近若干行"，丢中间态不影响结果，
+    // 最终的 done / error 事件照样会送达（通道被消费后会腾出空位）。
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<crate::state::HelperEvent>(512);
     glib::MainContext::default().spawn_local(async move {
         while let Some(event) = rx.recv().await {
             on_event(event);
@@ -360,11 +368,20 @@ pub fn spawn_helper(
         use tokio::io::AsyncBufReadExt;
 
         let emit = |event: crate::state::HelperEvent| {
-            let _ = tx.send(event);
+            // try_send：队列满时丢弃中间进度，绝不阻塞读取线程、也不无限堆积
+            let _ = tx.try_send(event);
         };
 
-        let mut child = match tokio::process::Command::new("pkexec")
-            .arg(archstore_core::config::paths::helper_path())
+        let helper = archstore_core::config::paths::helper_path();
+        let mut cmd = if elevate {
+            let mut c = tokio::process::Command::new("pkexec");
+            c.arg(&helper);
+            c
+        } else {
+            // 用户级 Flatpak：直接以当前用户运行 helper
+            tokio::process::Command::new(&helper)
+        };
+        let mut child = match cmd
             .arg("--plan")
             .arg(&plan_path)
             .arg("--kind")

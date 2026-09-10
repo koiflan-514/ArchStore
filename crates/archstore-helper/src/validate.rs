@@ -187,7 +187,7 @@ pub fn reconfirm_items(
                 });
             };
             let exists = match plan.kind {
-                PlanKind::FlatpakInstall => remote_has_app(remote, &item.name)?,
+                PlanKind::FlatpakInstall => remote_has_app(remote, &item.name, *installation)?,
                 _ => local_has_app(*installation, &item.name)?,
             };
             if !exists {
@@ -333,12 +333,12 @@ fn recompute_dependencies(
     }
 }
 
-/// 远程仓库是否提供该应用。
-fn remote_has_app(remote: &str, app_id: &str) -> CoreResult<bool> {
+/// 远程仓库是否提供该应用（按计划里声明的安装位置查：system / user）。
+fn remote_has_app(remote: &str, app_id: &str, installation: Installation) -> CoreResult<bool> {
     let out = std::process::Command::new("flatpak")
         .env("LC_ALL", "C")
         .env("LANG", "C")
-        .args(["remote-info", remote, app_id])
+        .args([installation.flag(), "remote-info", remote, app_id])
         .output();
     match out {
         Ok(o) => Ok(o.status.success()),

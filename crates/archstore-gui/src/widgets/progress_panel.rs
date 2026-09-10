@@ -154,25 +154,42 @@ impl ProgressPanel {
         self.expander.set_expanded(false);
     }
 
-    /// 同步日志（只在需要时重建，避免每帧重排）。
+    /// 同步日志：**增量**更新，避免每次事件都重建几千行的文本。
+    ///
+    /// 旧实现每次都会 `lines.join("\n")` 出一整块字符串再 `set_text`：
+    /// flatpak 下载时每秒几十行输出，等于每秒重建几十次 5000 行文本 ——
+    /// 既卡顿又制造大量临时内存（用户实测：安装 flatpak 时内存耗空）。
     fn sync_log(&self, lines: &[String]) {
-        let existing = self.buffer.line_count();
-        let expected = lines.len() as i32 + 1;
-        // 行数一致时只替换最后一行：进度条场景下每行都在变，全量重建会明显卡顿
-        if existing == expected && !lines.is_empty() {
+        let n = lines.len();
+        let existing = self.buffer.line_count() as usize;
+
+        // 1) 追加一行（最常见）：直接插到尾部
+        if n == existing + 1 {
+            self.buffer
+                .insert(&mut self.buffer.end_iter(), &format!("\n{}", lines[n - 1]));
+            self.scroll_log_to_end();
+            return;
+        }
+        // 2) 行数不变：替换最后一行（进度行原地刷新）
+        if n == existing && n > 0 {
             let mut start = self
                 .buffer
-                .iter_at_line((lines.len() - 1) as i32)
+                .iter_at_line((n - 1) as i32)
                 .unwrap_or_else(|| self.buffer.end_iter());
             let mut end = self.buffer.end_iter();
             self.buffer.delete(&mut start, &mut end);
-            self.buffer.insert(
-                &mut self.buffer.end_iter(),
-                lines.last().map(|s| s.as_str()).unwrap_or(""),
-            );
+            self.buffer
+                .insert(&mut self.buffer.end_iter(), &lines[n - 1]);
+            self.scroll_log_to_end();
             return;
         }
+        // 3) 其它情况（首次显示、日志被环形截断）：全量重建
         self.buffer.set_text(&lines.join("\n"));
+        self.scroll_log_to_end();
+    }
+
+    /// 日志滚到底部。
+    fn scroll_log_to_end(&self) {
         let end = self.buffer.end_iter();
         let mark = self.buffer.create_mark(None, &end, false);
         self.view.scroll_mark_onscreen(&mark);

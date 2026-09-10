@@ -123,9 +123,17 @@ pub fn build_steps(plan: &TransactionPlan) -> CoreResult<Vec<Step>> {
     Ok(steps)
 }
 
-/// 取出 Flatpak 目标，并拒绝 user 级别的提权执行。
+/// 取出 Flatpak 目标（用真实 euid 判断用户级操作是否合法）。
 fn flatpak_target(
     item: &archstore_core::model::plan::PlanItem,
+) -> CoreResult<(String, Installation)> {
+    flatpak_target_for(item, unsafe { libc::geteuid() })
+}
+
+/// 取出 Flatpak 目标，并拒绝"以 root 执行用户级操作"。
+fn flatpak_target_for(
+    item: &archstore_core::model::plan::PlanItem,
+    euid: u32,
 ) -> CoreResult<(String, Installation)> {
     let archstore_core::model::plan::PlanSource::Flatpak {
         remote,
@@ -136,9 +144,12 @@ fn flatpak_target(
             reason: format!("非 Flatpak 条目出现在 Flatpak 计划中：{}", item.name),
         });
     };
-    if *installation == Installation::User {
+    // 用户级操作**不能**以 root 执行：flatpak --user 会指向 root 自己的安装位置。
+    // 以普通用户运行 helper 时（GUI 不经过 pkexec 直接调用）才允许。
+    if *installation == Installation::User && euid == 0 {
         return Err(CoreError::PlanRejected {
-            reason: "用户级 Flatpak 操作不需要提权，应由 GUI 以普通用户身份执行".into(),
+            reason: "用户级 Flatpak 操作不能以 root 执行（应由 GUI 以当前用户直接调用 helper）"
+                .into(),
         });
     }
     Ok((remote.clone(), *installation))
@@ -213,30 +224,17 @@ fn run_step(step: &Step, emitter: &mut Emitter) -> CoreResult<i32> {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
 
-    // stderr 在独立线程读取，避免管道写满导致死锁
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    let stderr_thread = stderr.map(|err| {
-        std::thread::spawn(move || {
-            for line in LineStream::new(err) {
-                if tx.send(line).is_err() {
-                    break;
-                }
-            }
-        })
+    // stdout / stderr 各由一个线程读取，主线程**边收边发事件**。
+    //
+    // 旧实现把 stderr 攒在一个**无界**通道里、直到子进程退出才排空：
+    // flatpak 的下载进度走 stderr，几 GB 的下载会一路堆积 ——
+    // 用户实测就是"安装 flatpak 时内存耗空"。
+    // 现在换成有界 sync_channel（满了读线程自然阻塞，形成背压），
+    // 并且主线程立即消费，内存占用与输出速率无关。
+    let mut throttle = ProgressThrottle::default();
+    forward_lines(stdout, stderr, |line| {
+        emit_output_line(emitter, &line, &mut throttle);
     });
-
-    if let Some(out) = stdout {
-        for line in LineStream::new(out) {
-            emit_output_line(emitter, &line);
-        }
-    }
-
-    if let Some(h) = stderr_thread {
-        let _ = h.join();
-    }
-    for line in rx.try_iter() {
-        emit_output_line(emitter, &line);
-    }
 
     let status = child
         .wait()
@@ -264,16 +262,82 @@ fn run_step(step: &Step, emitter: &mut Emitter) -> CoreResult<i32> {
     Ok(code)
 }
 
+/// 边读边转发两个输出流的行（**绝不攒到子进程结束再回放**）。
+///
+/// 有界通道提供背压：读线程在队列满时自然阻塞，主线程立即消费，
+/// 因此内存占用与子进程输出速率无关。
+fn forward_lines<F: FnMut(String)>(
+    stdout: Option<impl Read + Send + 'static>,
+    stderr: Option<impl Read + Send + 'static>,
+    mut on_line: F,
+) {
+    let (tx, rx) = std::sync::mpsc::sync_channel::<String>(4096);
+    let mut readers = Vec::new();
+    if let Some(out) = stdout {
+        readers.push(spawn_line_reader(out, tx.clone()));
+    }
+    if let Some(err) = stderr {
+        readers.push(spawn_line_reader(err, tx.clone()));
+    }
+    drop(tx);
+    while let Ok(line) = rx.recv() {
+        on_line(line);
+    }
+    for reader in readers {
+        let _ = reader.join();
+    }
+}
+
+/// 读取子进程输出并在独立线程里送进有界通道。
+fn spawn_line_reader<R: Read + Send + 'static>(
+    src: R,
+    tx: std::sync::mpsc::SyncSender<String>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        for line in LineStream::new(src) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    })
+}
+
 /// 把一行子进程输出转成事件（软映射阶段，不做正则强解析）。
-fn emit_output_line(emitter: &mut Emitter, line: &str) {
+fn emit_output_line(emitter: &mut Emitter, line: &str, throttle: &mut ProgressThrottle) {
     let trimmed = line.trim();
     if trimmed.is_empty() {
+        return;
+    }
+    // 同一个阶段的同一个百分比只上报一次：flatpak 下载时每秒几十行
+    // "Downloading… N%"（用 \r 原地刷新），逐行上报会让 GUI 事件风暴。
+    if !throttle.accept(trimmed) {
         return;
     }
     if let Some((phase, percent, detail)) = parse_progress(trimmed) {
         emitter.progress(phase, percent, &detail);
     }
     emitter.log("info", trimmed);
+}
+
+/// 进度事件节流器：同一 (阶段, 百分比) 只放行一次。
+#[derive(Debug, Default)]
+pub struct ProgressThrottle {
+    last: Option<(&'static str, Option<u8>)>,
+}
+
+impl ProgressThrottle {
+    /// 这一行是否值得上报；false 表示与上一次的进度完全重复。
+    pub fn accept(&mut self, line: &str) -> bool {
+        let Some((phase, percent, _)) = parse_progress(line) else {
+            return true; // 普通日志照常上报
+        };
+        let key = (phase, percent);
+        if self.last == Some(key) {
+            return false;
+        }
+        self.last = Some(key);
+        true
+    }
 }
 
 /// 阶段软映射：包含即映射，映射失败就当普通日志（§5.5）。
@@ -488,17 +552,31 @@ mod tests {
     }
 
     #[test]
-    fn flatpak_user_scope_is_rejected_by_helper() {
-        let plan = plan_of(
-            PlanKind::FlatpakInstall,
-            vec![PlanItem::flatpak(
-                "flathub",
-                Installation::User,
-                "org.mozilla.firefox",
-            )],
+    fn flatpak_user_scope_carries_user_flag_and_is_rejected_as_root() {
+        let item = PlanItem::flatpak("flathub", Installation::User, "org.mozilla.firefox");
+        // root：必须拒绝（--user 会指向 root 自己的安装位置）
+        assert!(
+            flatpak_target_for(&item, 0).is_err(),
+            "以 root 执行用户级 Flatpak 必须被拒绝"
         );
-        let err = build_steps(&plan).expect_err("user scope must not go through the helper");
-        assert!(matches!(err, CoreError::PlanRejected { .. }));
+        // 普通用户：允许，并且参数里带 --user
+        let (remote, installation) = flatpak_target_for(&item, 1000).expect("non-root allowed");
+        assert_eq!(remote, "flathub");
+        assert_eq!(installation, Installation::User);
+        if unsafe { libc::geteuid() } != 0 {
+            let plan = plan_of(PlanKind::FlatpakInstall, vec![item]);
+            assert_eq!(
+                build_steps(&plan).expect("steps")[0].argv,
+                vec![
+                    "flatpak",
+                    "--user",
+                    "install",
+                    "-y",
+                    "flathub",
+                    "org.mozilla.firefox"
+                ]
+            );
+        }
     }
 
     #[test]
@@ -565,5 +643,82 @@ mod tests {
         };
         let lines: Vec<String> = LineStream::new(reader).collect();
         assert_eq!(lines, vec!["中文输出", "第二行"]);
+    }
+
+    #[test]
+    fn progress_throttle_drops_duplicate_percent() {
+        let mut t = ProgressThrottle::default();
+        assert!(t.accept("Downloading… 10%"));
+        assert!(!t.accept("Downloading… 10%"), "同一个百分比不得重复上报");
+        assert!(t.accept("Downloading… 11%"));
+        assert!(t.accept("Installing… 11%"), "阶段变化必须放行");
+        assert!(t.accept("正在检查密钥环…"), "普通日志永远放行");
+        assert!(t.accept("Downloading… 11%"), "切回另一个阶段要放行");
+    }
+
+    /// 每次 read 前先睡 60ms 的慢速输出端，用来验证"边跑边转发"。
+    struct SlowLines {
+        remaining: usize,
+        pending: Vec<u8>,
+    }
+
+    impl SlowLines {
+        fn new(n: usize) -> Self {
+            Self {
+                remaining: n,
+                pending: Vec::new(),
+            }
+        }
+    }
+
+    impl Read for SlowLines {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.pending.is_empty() {
+                if self.remaining == 0 {
+                    return Ok(0);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(60));
+                self.remaining -= 1;
+                self.pending = format!("line {}\n", self.remaining).into_bytes();
+            }
+            let n = self.pending.len().min(buf.len());
+            buf[..n].copy_from_slice(&self.pending[..n]);
+            self.pending.drain(..n);
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn lines_are_forwarded_while_the_child_is_still_running() {
+        // 子进程还在产出时就必须把行转发出去：旧实现把 stderr 攒到进程退出才回放，
+        // flatpak 下载（进度走 stderr）会一路堆积到内存耗空（用户实测反馈）。
+        let start = std::time::Instant::now();
+        let mut seen: Vec<(std::time::Duration, String)> = Vec::new();
+        forward_lines(Some(SlowLines::new(3)), None::<SlowLines>, |line| {
+            seen.push((start.elapsed(), line));
+        });
+        assert_eq!(seen.len(), 3);
+        assert!(
+            seen[0].0 < std::time::Duration::from_millis(150),
+            "第一行必须立刻转发，而不是等子进程结束（实测 {:?}）",
+            seen[0].0
+        );
+        assert!(
+            seen[2].0 >= std::time::Duration::from_millis(100),
+            "最后一行仍然要等它真的产出"
+        );
+    }
+
+    #[test]
+    fn many_lines_stream_through_bounded_channel() {
+        // 5 万行：有界通道 + 双读线程必须靠背压活下来，不能死锁、也不能无限缓冲
+        let data: String = (0..50_000).map(|i| format!("line {i}\n")).collect();
+        let mut count = 0usize;
+        forward_lines(
+            Some(std::io::Cursor::new(data.into_bytes())),
+            None::<std::io::Cursor<Vec<u8>>>,
+            |_| count += 1,
+        );
+        assert_eq!(count, 50_000);
     }
 }
